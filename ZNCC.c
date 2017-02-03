@@ -1,4 +1,7 @@
 #include <stdio.h>
+#include <string.h>
+
+#include "lodepng.h"
 
 /*
 	This file implements the Zero-mean Normalized Cross Correlation algorithm in C.
@@ -49,11 +52,15 @@
 		and report them in your final report.
 */
 
+#define BLOCK_SIZE 9
 
-int main() {
+int main(int argc, const char *argv[]) {
 	
-	printf("Hello World");
-	getchar();
+	char *file_1 = argv[1];
+	char *file_2 = argv[2];
+
+	// printf("arguments: %s, %s\n", file_1, file_2);
+	
 	return 0;
 
 }
