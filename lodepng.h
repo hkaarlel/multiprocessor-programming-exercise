@@ -27,7 +27,7 @@ freely, subject to the following restrictions:
 #define LODEPNG_H
 
 #include <string.h> /*for size_t*/
-int a = 2;
+
 extern const char* LODEPNG_VERSION_STRING;
 
 /*

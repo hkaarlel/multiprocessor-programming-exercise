@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "lodepng.h"
@@ -56,11 +57,24 @@
 
 int main(int argc, const char *argv[]) {
 	
-	char *file_1 = argv[1];
-	char *file_2 = argv[2];
+	const char *file_1 = argv[1];
+	const char *file_2 = argv[2];
+	
+	// size_t == basically a better version of 'unsigned int'.
+	// Use it whenever dealing with numbers that cannot be < 0.
+	size_t error;
+	unsigned char* image;
+	size_t width, height;
+	
+	error = lodepng_decode32_file(&image, &width, &height, file_1);
+	if (error) {
+		printf("error %u: %s\n", error, lodepng_error_text(error));
+	}
 
-	// printf("arguments: %s, %s\n", file_1, file_2);
+	/* Do stuff */
+
+	free(image);
 	
 	return 0;
-
+	getchar();
 }
