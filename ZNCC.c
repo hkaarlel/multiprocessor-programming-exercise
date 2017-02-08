@@ -11,49 +11,63 @@
 		Heikki Kaarlela, student nr. <#TODO>
 		Eero Paavola, student nr. 2195447
 
-	INSTRUCTIONS (link to doc: http://tinyurl.com/htyoa8u)
-	1.
-		Read/decode the images using LodePNG.
-		(You need to download and add the appropriate .c or .cpp files and the header file to you project).
-		Use the lodepng_decode32_file-function to decode the images into 32-bit RGBA raw images
-		and lodepng_encode_file-function to encode the output image(s).
-		Notice that you need to normalize the results to gray scale 0..255 as the output image should be greyscale.
+	link to doc: http://tinyurl.com/htyoa8u
+	
+	STEPS:
 
-	2.
-		Resize the images to 1/16 of the original size (From 2940x2016 to 735x504).
-		For this work it is enough to simply take pixels from every fourth row and column.
-		You are free to use more advanced approach if you wish. 
+	1. read input images to memory
+		a. input imgs are 32-bit RGBA .png images
 
-	3.
-		Transform the images to grey scale images (8-bits per pixel). E.g. Y=0.2126R+0.7152G+0.0722B.
+	2. resize images to 1/16 of the original size (From 2940x2016 to 735x504)
+		NOTE! this also means that ndisp has to be scaled (260 / 4 = 65 I think...?)
+		a. naive method: take every 4th pixel, discard rest
+		b. better: calculate mean of 4x4 blocks -> value of new pixel
+		
 
-	4.
-		Implement the ZNCC algorithm with the grey scale images, start with 9x9 block size.
-		Since the image size has been downscaled, you also need to scale the ndisp-value found in the calib.txt.
-		The ndisp value is referred to as MAX_DISP in the pseudo-code.
-		Use the resized grayscale images as input. You are free to choose how you process the image borders. 
+	3. make images greyscale (8-bits/pixel)
+		a. see if doing this manually is the same as using
+		lodepng_decode_file(img, width, height,	fname, LodePNGColorType colortype, unsigned bitdepth),
+		where colortype = 0, bitdepth = 8
 
-	5.
-		Compute the disparity images for both input images in order to get two disparity maps for post-processing.
-		After post-processing one final disparity map is sufficient in this work. 
+	4. compute disparity images (2)
+		a. first using img2 as "filter" to img1 and then vice versa
 
-	6.
-		Check that your outputs resembles the one in the assignment doc (Output the result image to depthmap.png).
-		Notice that you need to normalize the pixel values from 0-ndisp to 0-255.
-		However, once you have checked that the image looks as it should be move the normalization after the post-processing.
+	5. apply postprocessing, producing one output img
+		a. first crosscheck
+		b. then occlusion filling
 
-	7.
-		Implement the post-processing including cross-check and occlusion filling.
-		Instructions for post-processing are after the pseudo code on the last page of the doc.
-		Check again that the disparity map looks right
+	6. check that the output file looks ok
+		a. output img should be 8-bit greyscale image named 'depthmap.png'
+		b. fiddle with block value in step 5 (15, 25...) and see what looks best
 
-	8.
-		Measure the total execution time of your implementation including the scaling and grey scaling
-		using QueryPerformanceCounter-function in Windows and gettimeofday-function in Linux
-		and report them in your final report.
+	7. benchmark the program using QueryPerformanceCounter() and VS profiler (compare)
+
 */
 
+/*
+HiFi:
+	- handle input image of any dimensions
+	- resize image to any fraction
+*/
 #define BLOCK_SIZE 9
+
+#define BYTES_PER_PIXEL 3 // 3 = RGB (24-bit), 4 = RGBA (32-bit)
+
+#define INPUT_IMG_WIDTH 2940
+#define INPUT_IMG_HEIGHT 2016
+
+#define REDUCED_IMG_WIDTH 735
+#define REDUCED_IMG_HEIGHT 504
+
+typedef struct RGB_pixel {
+	unsigned char red, green, blue;
+} RGB_pixel;
+
+// useless struct? only for naming
+typedef struct greyscale_pixel {
+	unsigned char value;
+} greyscale_pixel;
+
 
 int main(int argc, const char *argv[]) {
 	
@@ -62,17 +76,31 @@ int main(int argc, const char *argv[]) {
 	
 	// size_t == basically a better version of 'unsigned int'.
 	// Use it whenever dealing with numbers that cannot be < 0.
-	size_t error;
-	unsigned char* image;
+	unsigned int error;
+	unsigned char *image;
 	size_t width, height;
 	
-	error = lodepng_decode32_file(&image, &width, &height, file_1);
+	// read file_1 to buffer
+	error = lodepng_decode24_file(&image, &width, &height, file_1);
 	if (error) {
 		printf("error %u: %s\n", error, lodepng_error_text(error));
+		exit(1);
+	}
+	
+	if (width != INPUT_IMG_WIDTH || height != INPUT_IMG_HEIGHT) {
+		printf("Expected input image with dimensions %d x %d. Instead got %d x %d", INPUT_IMG_WIDTH, INPUT_IMG_HEIGHT, width, height);
+		exit(1);
 	}
 
-	/* Do stuff */
+	// map byte buffer to array of structs (RGB_pixel) i.e. [FF, 02, 5A, FF, 05, 06] -> [struct(FF,02,5A), struct(FF,05,06)]
+	// FIXME: needs to be done dynamically (malloc) to avoid stack overflow
+	RGB_pixel reduced_img[REDUCED_IMG_WIDTH * REDUCED_IMG_HEIGHT];
 
+	// get rid of every 4th pixel on both axis
+
+	// convert RGB_pixel structs to greyscale pixels (do they even need a struct?)
+	
+	
 	free(image);
 	
 	return 0;
