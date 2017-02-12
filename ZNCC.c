@@ -111,47 +111,79 @@ int main(int argc, const char *argv[]) {
 	const char *file_2 = argv[2];
 	
 	unsigned int error;
-	unsigned char *image;
-	unsigned int width, height;
+
+	unsigned int img1_width, img1_height;
+	unsigned char *image_1;
 	
-	error = lodepng_decode32_file(&image, &width, &height, file_1);
+	error = lodepng_decode32_file(&image_1, &img1_width, &img1_height, file_1);
+	if (error) {
+		printf("error %u: %s\n", error, lodepng_error_text(error));
+		exit(1);
+	}
+
+	if (img1_width != INPUT_IMG_WIDTH || img1_height != INPUT_IMG_HEIGHT) {
+		printf("Expected input image with dimensions %d x %d. Instead got %d x %d", INPUT_IMG_WIDTH, INPUT_IMG_HEIGHT, img1_width, img1_height);
+		exit(1);
+	}
+	unsigned int img2_width, img2_height;
+	unsigned char *image_2;
+	error = lodepng_decode32_file(&image_2, &img2_width, &img2_height, file_2);
 	if (error) {
 		printf("error %u: %s\n", error, lodepng_error_text(error));
 		exit(1);
 	}
 	
-	if (width != INPUT_IMG_WIDTH || height != INPUT_IMG_HEIGHT) {
-		printf("Expected input image with dimensions %d x %d. Instead got %d x %d", INPUT_IMG_WIDTH, INPUT_IMG_HEIGHT, width, height);
+	if (img1_width != img2_width || img1_height != img2_height) {
+		printf("Images have to be the same size! Exiting...");
 		exit(1);
 	}
 
+	unsigned int width = img1_width;
+	unsigned int height = img1_height;
+	
 	unsigned int r_width = width / 4;
 	unsigned int r_height = height / 4;
 	unsigned int r_image_size = (r_width * r_height);
 
-	// allocate memory for resized image
-	unsigned int *p_resized_img = (unsigned int *) malloc(sizeof(unsigned int) * r_image_size);
+	// allocate memory for resized images
+	unsigned int *p_resized_img_1 = (unsigned int *) malloc(sizeof(unsigned int) * r_image_size);
+	unsigned int *p_resized_img_2 = (unsigned int *) malloc(sizeof(unsigned int) * r_image_size);
 
-	// create resized image from original image
-	reduce_img_size(image, height, width, p_resized_img);
-	free(image); // original image no longer needed
+	// create resized images from original image
+	reduce_img_size(image_1, height, width, p_resized_img_1);
+	reduce_img_size(image_2, height, width, p_resized_img_2);
+	// original images no longer needed
+	free(image_1);
+	free(image_2);
 
 	// allocate memory for greyscale image
-	unsigned char *p_greyscale_img = (unsigned char *)malloc(sizeof(unsigned char) * r_image_size);
+	unsigned char *p_greyscale_img_1 = (unsigned char *) malloc(sizeof(unsigned char) * r_image_size);
+	unsigned char *p_greyscale_img_2 = (unsigned char *) malloc(sizeof(unsigned char) * r_image_size);
 
-	// create greyscale image from resized image
-	convert_to_greyscale(p_resized_img, r_height, r_width, p_greyscale_img);
+
+	// create greyscale images from resized images
+	convert_to_greyscale(p_resized_img_1, r_height, r_width, p_greyscale_img_1);
+	convert_to_greyscale(p_resized_img_2, r_height, r_width, p_greyscale_img_2);
 	
-	// Encode the resized image
-	const char *resized_filename = "resized.png";
-	encode_to_32_file(resized_filename, p_resized_img, r_width, r_height);
+	// FOR DEBUGGING
+	// Encode the resized images
+	const char *resized_filename_1 = "resized1.png";
+	const char *resized_filename_2 = "resized2.png";
+	encode_to_32_file(resized_filename_1, p_resized_img_1, r_width, r_height);
+	encode_to_32_file(resized_filename_2, p_resized_img_2, r_width, r_height);
 	
-	// Encode the greyscale image
-	const char *greyscale_file = "greyscale.png";
-	encode_to_greyscale_file(greyscale_file, p_greyscale_img, r_width, r_height);
+	// FOR DEBUGGING
+	// Encode the greyscale images
+	const char *greyscale_file_1 = "greyscale1.png";
+	const char *greyscale_file_2 = "greyscale2.png";
+	encode_to_greyscale_file(greyscale_file_1, p_greyscale_img_1, r_width, r_height);
+	encode_to_greyscale_file(greyscale_file_2, p_greyscale_img_2, r_width, r_height);
 	
-	free(p_resized_img);
-	free(p_greyscale_img);
+	free(p_resized_img_1);
+	free(p_resized_img_2);
+
+	free(p_greyscale_img_1);
+	free(p_greyscale_img_2);
 	
 	return 0;
 	
