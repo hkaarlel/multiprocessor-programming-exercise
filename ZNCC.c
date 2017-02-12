@@ -59,9 +59,50 @@ HiFi:
 #define REDUCED_IMG_WIDTH 735
 #define REDUCED_IMG_HEIGHT 504
 
-void encodeOneStep(const char* filename, const unsigned char* image, unsigned width, unsigned height)
-{
-	
+void encode_to_32_file(const char* filename, const unsigned char* image, unsigned width, unsigned height) {
+	unsigned error = lodepng_encode32_file(filename, image, width, height);
+	if (error) printf("error %u: %s\n", error, lodepng_error_text(error));
+}
+
+void encode_to_greyscale_file(const char* filename, const unsigned char* image, unsigned width, unsigned height) {
+	unsigned error = lodepng_encode_file(filename, image, width, height, LCT_GREY, 8);
+	if (error) printf("error %u: %s\n", error, lodepng_error_text(error));
+}
+
+void reduce_img_size(unsigned char *source_img, unsigned source_height, unsigned source_width, unsigned *resized_img) {
+	// put every 4th pixel from source_img[] to resized_img[]
+	int byte_ctr = 0;
+	for (unsigned int y = 0; y < source_height; y += 4) {
+		for (unsigned int x = 0; x < source_width; x += 4) {
+			unsigned char r = source_img[BYTES_PER_PIXEL*(y*source_width + x)];
+			unsigned char g = source_img[BYTES_PER_PIXEL*(y*source_width + x) + 1];
+			unsigned char b = source_img[BYTES_PER_PIXEL*(y*source_width + x) + 2];
+			unsigned char a = source_img[BYTES_PER_PIXEL*(y*source_width + x) + 3];
+
+			// inspired by http://stackoverflow.com/questions/6834343/ultra-quick-way-to-concatenate-byte-values
+			// this saves the bytes in backwards byte-order i.e. ABGR. Don't know why, but it works 
+			unsigned int pixel = (a << 24) | (b << 16) | (g << 8) | r;
+
+			resized_img[byte_ctr] = pixel;
+			byte_ctr++;
+		}
+	}
+}
+
+void convert_to_greyscale(unsigned *input_img, unsigned input_height, unsigned input_width, unsigned char *output_img) {
+	int byte_ctr = 0;
+	for (unsigned int y = 0; y < input_height; y++) {
+		for (unsigned int x = 0; x < input_width; x++) {
+			unsigned int pixel = input_img[y*input_width + x];
+			unsigned char r = pixel;
+			unsigned char g = pixel >> 8;
+			unsigned char b = pixel >> 16;
+
+			unsigned char greyscale_value = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+			output_img[byte_ctr] = greyscale_value;
+			byte_ctr++;
+		}
+	}
 }
 
 int main(int argc, const char *argv[]) {
@@ -84,59 +125,30 @@ int main(int argc, const char *argv[]) {
 		exit(1);
 	}
 
-	// allocate memory for resized image
 	unsigned int r_width = width / 4;
 	unsigned int r_height = height / 4;
 	unsigned int r_image_size = (r_width * r_height);
-	
+
+	// allocate memory for resized image
 	unsigned int *p_resized_img = (unsigned int *) malloc(sizeof(unsigned int) * r_image_size);
 
-	// put every 4th pixel to p_resized_img
-	int byte_ctr = 0;
-	for (unsigned int y = 0; y < height; y += 4) {
-		for (unsigned int x = 0; x < width; x += 4) {
-			unsigned char r = image[BYTES_PER_PIXEL*(y*width + x)];
-			unsigned char g = image[BYTES_PER_PIXEL*(y*width + x) + 1];
-			unsigned char b = image[BYTES_PER_PIXEL*(y*width + x) + 2];
-			unsigned char a = image[BYTES_PER_PIXEL*(y*width + x) + 3];
-			
-			// inspired by http://stackoverflow.com/questions/6834343/ultra-quick-way-to-concatenate-byte-values
-			// this saves the bytes in backwards byte-order i.e. ABGR. Don't know why, but it works 
-			unsigned int pixel = (a << 24) | (b << 16) | (g << 8) | r;
+	// create resized image from original image
+	reduce_img_size(image, height, width, p_resized_img);
+	free(image); // original image no longer needed
 
-			p_resized_img[byte_ctr] = pixel;
-			byte_ctr++;
-		}
-	}
-	free(image);
+	// allocate memory for greyscale image
+	unsigned char *p_greyscale_img = (unsigned char *)malloc(sizeof(unsigned char) * r_image_size);
 
+	// create greyscale image from resized image
+	convert_to_greyscale(p_resized_img, r_height, r_width, p_greyscale_img);
 	
-	unsigned char *p_greyscale_img = (unsigned char *) malloc(sizeof(unsigned char) * r_image_size);
-
-	byte_ctr = 0;
-	for (unsigned int y = 0; y < r_height; y++) {
-		for (unsigned int x = 0; x < r_width; x++) {
-			unsigned int pixel = p_resized_img[y*r_width + x];
-			unsigned char r = pixel;
-			unsigned char g = pixel >> 8;
-			unsigned char b = pixel >> 16;
-
-			unsigned char greyscale_value = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-			p_greyscale_img[byte_ctr] = greyscale_value;
-			byte_ctr++;
-		}
-	}
-
-	/*Encode the resized image*/
-	const char *resized_file = "resized.png";
-	error = lodepng_encode32_file(resized_file, p_resized_img, r_width, r_height);
-	/*if there's an error, display it*/
-	if (error) printf("error %u: %s\n", error, lodepng_error_text(error));
-
-	/*Encode the greyscale image*/
+	// Encode the resized image
+	const char *resized_filename = "resized.png";
+	encode_to_32_file(resized_filename, p_resized_img, r_width, r_height);
+	
+	// Encode the greyscale image
 	const char *greyscale_file = "greyscale.png";
-	error = lodepng_encode_file(greyscale_file, p_greyscale_img, r_width, r_height, LCT_GREY, 8);
-	if (error) printf("error %u: %s\n", error, lodepng_error_text(error));
+	encode_to_greyscale_file(greyscale_file, p_greyscale_img, r_width, r_height);
 	
 	free(p_resized_img);
 	free(p_greyscale_img);
