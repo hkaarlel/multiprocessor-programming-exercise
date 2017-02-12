@@ -51,7 +51,7 @@ HiFi:
 */
 #define BLOCK_SIZE 9
 
-#define BYTES_PER_PIXEL 3 // 3 = RGB (24-bit), 4 = RGBA (32-bit)
+#define BYTES_PER_PIXEL 4 // 3 = RGB (24-bit), 4 = RGBA (32-bit)
 
 #define INPUT_IMG_WIDTH 2940
 #define INPUT_IMG_HEIGHT 2016
@@ -59,29 +59,21 @@ HiFi:
 #define REDUCED_IMG_WIDTH 735
 #define REDUCED_IMG_HEIGHT 504
 
-typedef struct RGB_pixel {
-	unsigned char red, green, blue;
-} RGB_pixel;
-
-// useless struct? only for naming
-typedef struct greyscale_pixel {
-	unsigned char value;
-} greyscale_pixel;
-
+void encodeOneStep(const char* filename, const unsigned char* image, unsigned width, unsigned height)
+{
+	
+}
 
 int main(int argc, const char *argv[]) {
 	
 	const char *file_1 = argv[1];
 	const char *file_2 = argv[2];
 	
-	// size_t == basically a better version of 'unsigned int'.
-	// Use it whenever dealing with numbers that cannot be < 0.
 	unsigned int error;
 	unsigned char *image;
-	size_t width, height;
+	unsigned int width, height;
 	
-	// read file_1 to buffer
-	error = lodepng_decode24_file(&image, &width, &height, file_1);
+	error = lodepng_decode32_file(&image, &width, &height, file_1);
 	if (error) {
 		printf("error %u: %s\n", error, lodepng_error_text(error));
 		exit(1);
@@ -92,17 +84,63 @@ int main(int argc, const char *argv[]) {
 		exit(1);
 	}
 
-	// map byte buffer to array of structs (RGB_pixel) i.e. [FF, 02, 5A, FF, 05, 06] -> [struct(FF,02,5A), struct(FF,05,06)]
-	// FIXME: needs to be done dynamically (malloc) to avoid stack overflow
-	RGB_pixel reduced_img[REDUCED_IMG_WIDTH * REDUCED_IMG_HEIGHT];
-
-	// get rid of every 4th pixel on both axis
-
-	// convert RGB_pixel structs to greyscale pixels (do they even need a struct?)
+	// allocate memory for resized image
+	unsigned int r_width = width / 4;
+	unsigned int r_height = height / 4;
+	unsigned int r_image_size = (r_width * r_height);
 	
-	
+	unsigned int *p_resized_img = (unsigned int *) malloc(sizeof(unsigned int) * r_image_size);
+
+	// put every 4th pixel to p_resized_img
+	int byte_ctr = 0;
+	for (unsigned int y = 0; y < height; y += 4) {
+		for (unsigned int x = 0; x < width; x += 4) {
+			unsigned char r = image[BYTES_PER_PIXEL*(y*width + x)];
+			unsigned char g = image[BYTES_PER_PIXEL*(y*width + x) + 1];
+			unsigned char b = image[BYTES_PER_PIXEL*(y*width + x) + 2];
+			unsigned char a = image[BYTES_PER_PIXEL*(y*width + x) + 3];
+			
+			// inspired by http://stackoverflow.com/questions/6834343/ultra-quick-way-to-concatenate-byte-values
+			// this saves the bytes in backwards byte-order i.e. ABGR. Don't know why, but it works 
+			unsigned int pixel = (a << 24) | (b << 16) | (g << 8) | r;
+
+			p_resized_img[byte_ctr] = pixel;
+			byte_ctr++;
+		}
+	}
 	free(image);
+
+	
+	unsigned char *p_greyscale_img = (unsigned char *) malloc(sizeof(unsigned char) * r_image_size);
+
+	byte_ctr = 0;
+	for (unsigned int y = 0; y < r_height; y++) {
+		for (unsigned int x = 0; x < r_width; x++) {
+			unsigned int pixel = p_resized_img[y*r_width + x];
+			unsigned char r = pixel;
+			unsigned char g = pixel >> 8;
+			unsigned char b = pixel >> 16;
+
+			unsigned char greyscale_value = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+			p_greyscale_img[byte_ctr] = greyscale_value;
+			byte_ctr++;
+		}
+	}
+
+	/*Encode the resized image*/
+	const char *resized_file = "resized.png";
+	error = lodepng_encode32_file(resized_file, p_resized_img, r_width, r_height);
+	/*if there's an error, display it*/
+	if (error) printf("error %u: %s\n", error, lodepng_error_text(error));
+
+	/*Encode the greyscale image*/
+	const char *greyscale_file = "greyscale.png";
+	error = lodepng_encode_file(greyscale_file, p_greyscale_img, r_width, r_height, LCT_GREY, 8);
+	if (error) printf("error %u: %s\n", error, lodepng_error_text(error));
+	
+	free(p_resized_img);
+	free(p_greyscale_img);
 	
 	return 0;
-	getchar();
+	
 }
