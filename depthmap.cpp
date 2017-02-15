@@ -1,7 +1,6 @@
 #include <iostream>
 #include <vector>
 #include <unordered_map>
-#include <tuple>
 
 #include "lodepng.h"
 
@@ -60,10 +59,11 @@ HiFi:
 #define REDUCED_IMG_WIDTH 735
 #define REDUCED_IMG_HEIGHT 504
 
+#define MAX_DISP 260
+
 using std::cout;
 using std::vector;
 using std::unordered_map;
-using std::tuple;
 
 struct GreyscaleImage {
 
@@ -124,7 +124,7 @@ void convert_to_greyscale(vector<unsigned char> &input_img, GreyscaleImage &outp
 	}
 }
 
-vector<unsigned> get_window_around_point(GreyscaleImage &image, unsigned center_x, unsigned center_y, unsigned block_radius) {
+vector<unsigned> get_window_around_point(GreyscaleImage &image, unsigned center_x, unsigned center_y, int block_radius) {
 
 	vector<unsigned> window_pixels;
 
@@ -136,10 +136,10 @@ vector<unsigned> get_window_around_point(GreyscaleImage &image, unsigned center_
 	return window_pixels;
 }
 
-void calc_window_averages(GreyscaleImage &image, unordered_map<unsigned, float> &avg_map) {
+unordered_map<unsigned, float> calc_window_averages(GreyscaleImage &image, int block_radius) {
 
-	int block_radius = (BLOCK_SIZE - 1) / 2;
 	unsigned pixel_number;
+	unordered_map<unsigned, float> avg_map;
 	for (int y = 0; y < image.height; y++) {
 		if (y - block_radius < 0 || y + block_radius >= image.height) {
 			continue;
@@ -160,8 +160,17 @@ void calc_window_averages(GreyscaleImage &image, unordered_map<unsigned, float> 
 			avg_map.insert({pixel_number, mean});
 		}
 	}
+	return avg_map;
 }
 
+vector<unsigned char> calc_diparity_map(GreyscaleImage &src_img,
+										unordered_map<unsigned, float> &src_img_window_avgs,
+										GreyscaleImage &ref_img,
+										unordered_map<unsigned, float> &ref_img_window_avgs,
+										unsigned max_disp, int block_radius) {
+	
+	for 
+}
 
 
 int main(int argc, const char *argv[]) {
@@ -216,11 +225,15 @@ int main(int argc, const char *argv[]) {
 		std::cout << "Greyscale image has wrong dimensions! Aborting..." << std::endl;
 	}
 
-	unordered_map<unsigned, float> left_img_window_avgs;
-	unordered_map<unsigned, float> right_img_window_avgs;
+	int block_radius = (BLOCK_SIZE - 1) / 2;
 
-	calc_window_averages(Left_img, left_img_window_avgs);
-	calc_window_averages(Right_img, right_img_window_avgs);
+	unordered_map<unsigned, float> left_img_window_avgs = calc_window_averages(Left_img, block_radius);
+	unordered_map<unsigned, float> right_img_window_avgs = calc_window_averages(Right_img, block_radius);
+
+	int max_disp = MAX_DISP / 4;
+
+	vector<unsigned char> L2R_disparity_map_values = calc_diparity_map(Left_img, left_img_window_avgs, Right_img, right_img_window_avgs, max_disp, block_radius);
+	vector<unsigned char> R2L_disparity_map_values = calc_diparity_map(Right_img, right_img_window_avgs, Left_img, left_img_window_avgs, max_disp, block_radius);
 
 	/*
 	// FOR DEBUGGING
