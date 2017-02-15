@@ -7,7 +7,7 @@
 	This file implements the Zero-mean Normalized Cross Correlation algorithm in C.
 	Phase 1 of the course work for the Multiprocessor Programming -course.
 	Authors:
-		Heikki Kaarlela, student nr. <#TODO>
+		Heikki Kaarlela, student nr. 2316624
 		Eero Paavola, student nr. 2195447
 
 	link to doc: http://tinyurl.com/htyoa8u
