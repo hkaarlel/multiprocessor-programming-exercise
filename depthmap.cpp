@@ -1,5 +1,7 @@
 #include <iostream>
 #include <vector>
+#include <unordered_map>
+#include <tuple>
 
 #include "lodepng.h"
 
@@ -48,7 +50,7 @@ HiFi:
 	- handle input image of any dimensions
 	- resize image to any fraction
 */
-#define BLOCK_SIZE 9
+#define BLOCK_SIZE 9 // Has to be uneven i.e. 9, 15, 25
 
 #define BYTES_PER_PIXEL 4 // 3 = RGB (24-bit), 4 = RGBA (32-bit)
 
@@ -60,6 +62,8 @@ HiFi:
 
 using std::cout;
 using std::vector;
+using std::unordered_map;
+using std::tuple;
 
 struct GreyscaleImage {
 
@@ -120,6 +124,46 @@ void convert_to_greyscale(vector<unsigned char> &input_img, GreyscaleImage &outp
 	}
 }
 
+vector<unsigned> get_window_around_point(GreyscaleImage &image, unsigned center_x, unsigned center_y, unsigned block_radius) {
+
+	vector<unsigned> window_pixels;
+
+	for (unsigned y = center_y - block_radius; y <= center_y + block_radius; y++) {
+		for (unsigned x = center_x - block_radius; x <= center_x + block_radius; x++) {
+			window_pixels.push_back(image.get_pixel(x, y));
+		}
+	}
+	return window_pixels;
+}
+
+void calc_window_averages(GreyscaleImage &image, unordered_map<unsigned, float> &avg_map) {
+
+	int block_radius = (BLOCK_SIZE - 1) / 2;
+	unsigned pixel_number;
+	for (int y = 0; y < image.height; y++) {
+		if (y - block_radius < 0 || y + block_radius >= image.height) {
+			continue;
+		}
+		for (int x = 0; x < image.width; x++) {
+			if (x - block_radius < 0 || x + block_radius >= image.width) {
+				continue;
+			}
+
+			vector<unsigned> window_pixels = get_window_around_point(image, x, y, block_radius);
+
+			unsigned sum = 0;
+			for (unsigned i = 0; i < window_pixels.size(); i++) {
+				sum += window_pixels[i];
+			}
+			float mean = (float)sum / (float)(BLOCK_SIZE * BLOCK_SIZE);
+			pixel_number = y*image.width + x;
+			avg_map.insert({pixel_number, mean});
+		}
+	}
+}
+
+
+
 int main(int argc, const char *argv[]) {
 	
 	const char* filename_1 = argc > 1 ? argv[1] : "im0.png";
@@ -130,7 +174,8 @@ int main(int argc, const char *argv[]) {
 	decodeFile(filename_1, left_img, L_img_width, L_img_height);
 	
 	if (L_img_width != INPUT_IMG_WIDTH || L_img_height != INPUT_IMG_HEIGHT) {
-		printf("Expected input image with dimensions %d x %d. Instead got %d x %d", INPUT_IMG_WIDTH, INPUT_IMG_HEIGHT, L_img_width, L_img_height);
+		std::cout << "Expected input image with dimensions " << INPUT_IMG_WIDTH << " x " << INPUT_IMG_HEIGHT << 
+					 ". Instead got " << L_img_width << " x " << L_img_height << std::endl;
 		exit(1);
 	}
 
@@ -140,7 +185,7 @@ int main(int argc, const char *argv[]) {
 	decodeFile(filename_2, right_img, R_img_width, R_img_height);
 	
 	if (L_img_width != R_img_width || L_img_height != R_img_height) {
-		printf("Images have to be the same size! Exiting...");
+		std::cout << "Images have to be the same size! Exiting..." << std::endl;
 		exit(1);
 	}
 
@@ -159,12 +204,25 @@ int main(int argc, const char *argv[]) {
 	reduce_img_size(right_img, height, width, right_img_scaled);
 
 	// allocate memory for greyscale image
-	GreyscaleImage Left_img, Right_img;
+	GreyscaleImage Left_img = { scaled_width, scaled_height };
+	GreyscaleImage Right_img = { scaled_width, scaled_height };
 
 	// create greyscale images from resized images
 	convert_to_greyscale(left_img_scaled, Left_img);
 	convert_to_greyscale(right_img_scaled, Right_img);
-	
+
+	if (Left_img.pixels.size() != scaled_width*scaled_height 
+		|| Right_img.pixels.size() != scaled_width*scaled_height) {
+		std::cout << "Greyscale image has wrong dimensions! Aborting..." << std::endl;
+	}
+
+	unordered_map<unsigned, float> left_img_window_avgs;
+	unordered_map<unsigned, float> right_img_window_avgs;
+
+	calc_window_averages(Left_img, left_img_window_avgs);
+	calc_window_averages(Right_img, right_img_window_avgs);
+
+	/*
 	// FOR DEBUGGING
 	// Encode the resized images
 	const char *resized_filename_1 = "resized1.png";
@@ -178,7 +236,8 @@ int main(int argc, const char *argv[]) {
 	const char *greyscale_file_2 = "greyscale2.png";
 	encode_to_greyscale_file(greyscale_file_1, Left_img.pixels, scaled_width, scaled_height);
 	encode_to_greyscale_file(greyscale_file_2, Right_img.pixels, scaled_width, scaled_height);
-	
+	*/
+	int a = 0;
 	return 0;
 	
 }
