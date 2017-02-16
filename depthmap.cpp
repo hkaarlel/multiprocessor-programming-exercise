@@ -163,9 +163,9 @@ unordered_map<unsigned, float> calc_window_averages(GreyscaleImage &image, int b
 	return avg_map;
 }
 
-vector<unsigned char> calc_diparity_map(GreyscaleImage &src_img, unordered_map<unsigned, float> &src_img_window_avgs, 
+vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<unsigned, float> &src_img_window_avgs, 
 										GreyscaleImage &ref_img, unordered_map<unsigned, float> &ref_img_window_avgs, 
-										int max_disp, int block_radius)
+										int min_disp, int max_disp, int block_radius)
 {
 	unsigned pixel_number;
 	unsigned ref_img_pixel_number;
@@ -187,16 +187,16 @@ vector<unsigned char> calc_diparity_map(GreyscaleImage &src_img, unordered_map<u
 			vector<unsigned> src_window_pixels = get_window_around_point(src_img, x, y, block_radius);
 
 			float zncc_numerator_sum = 0;
-			float zncc_denominator_sum = 0;
+			float zncc_denominator_sum_L = 0;
+			float zncc_denominator_sum_R = 0;
 			float zncc = 0;
 			float best_zncc = 0;
 			unsigned char best_disparity_value = 0;
 			// for each disparity value...
-			for (int disparity = 0; disparity <= max_disp; disparity++) {
-				
+			for (int disparity = min_disp; disparity <= max_disp; disparity++) {
 				int offset = x - disparity; // offset = value of x in reference image
-				if (offset - block_radius < 0) {
-					continue; // Make sure that disparity values dont move the window outside of image.
+				if (offset - block_radius < 0 || offset + block_radius >= src_img.width) {
+					break; // Make sure that disparity values dont move the window outside of image.
 				}
 				ref_img_pixel_number = y*ref_img.width + offset;
 				float ref_window_mean = ref_img_window_avgs[ref_img_pixel_number];
@@ -209,12 +209,14 @@ vector<unsigned char> calc_diparity_map(GreyscaleImage &src_img, unordered_map<u
 					float ref_window_diff = ref_window_pixels[i] - ref_window_mean;
 
 					zncc_numerator_sum += src_window_diff * ref_window_diff;
-					zncc_denominator_sum += pow(src_window_diff, 2) * pow(ref_window_diff, 2);
+					zncc_denominator_sum_L += pow(src_window_diff, 2);
+					zncc_denominator_sum_R += pow(ref_window_diff, 2);
 				}
-				zncc = zncc_numerator_sum / sqrt(zncc_denominator_sum);
+
+				zncc = zncc_numerator_sum / (sqrt(zncc_denominator_sum_L) * sqrt(zncc_denominator_sum_R));
 				if (zncc > best_zncc) {
 					best_zncc = zncc;
-					best_disparity_value = disparity;
+					best_disparity_value = abs(disparity);
 				}
 			}
 			std::cout << "Disparity for (" << x << "," << y << ") is " << (int)best_disparity_value << std::endl;
@@ -227,7 +229,7 @@ vector<unsigned char> calc_diparity_map(GreyscaleImage &src_img, unordered_map<u
 vector<unsigned char> cross_check(vector<unsigned char> &left_image, vector<unsigned char> &right_image, int threshold) {
 	//Käy läpi kaksi listaa, vertailee keskenään, jos yli thresholdin niin vaihtaa tilalle nollan
 	vector<unsigned char> cross_checked_image = left_image;
-	for (int x = 0; x < left_image.size; x++) {
+	for (int x = 0; x < left_image.size(); x++) {
 		if (abs(left_image[x] - right_image[x]) > threshold)
 			cross_checked_image[x] = 0;
 	}
@@ -237,7 +239,7 @@ vector<unsigned char> cross_check(vector<unsigned char> &left_image, vector<unsi
 vector<unsigned char> occlusion_filling(vector<unsigned char> &image) {
 	//Käy läpi listan, jos löytyy nolla niin laittaa tilalle sitä edeltävän luvun. Jos eka on nolla niin käy läpi kunnes löytyy eka ei-nolla ja laittaa sen ekaksi. Hyvin yksiulotteinen
 	vector<unsigned char> occl_filled_image = image;
-	for (int x = 0; x < image.size; x++) {
+	for (int x = 0; x < image.size(); x++) {
 
 		if (image[x] = 0) {
 			//voi tehä paremmankin algoritmin, tämä ei esim. ota huomioon sitä et onko rivin ihan eka pikseli, jollon sitä ei kannata ottaa edellisestä pikselistä
@@ -260,6 +262,17 @@ vector<unsigned char> occlusion_filling(vector<unsigned char> &image) {
 			
 	}
 	return occl_filled_image;
+}
+
+vector<unsigned char> normalise_disparity_map(vector<unsigned char> &disp_map, int max_disp) {
+	int max_value = 255;
+	vector<unsigned char> normalised = vector<unsigned char>();
+	for (vector<unsigned char>::iterator it = disp_map.begin(); it != disp_map.end(); ++it) {
+		unsigned char val = *it;
+		unsigned char normalized_val = (val * max_value) / max_disp;
+		normalised.push_back(normalized_val);
+	}
+	return normalised;
 }
 
 int main(int argc, const char *argv[]) {
@@ -323,10 +336,11 @@ int main(int argc, const char *argv[]) {
 
 	int max_disp = MAX_DISP / 4;
 	std::cout << "Calculating disparity maps..." << std::endl;
-	vector<unsigned char> L2R_disparity_map_values = calc_diparity_map(Left_img, left_img_window_avgs, Right_img, right_img_window_avgs, max_disp, block_radius);
-	//vector<unsigned char> R2L_disparity_map_values = calc_diparity_map(Right_img, right_img_window_avgs, Left_img, left_img_window_avgs, max_disp, block_radius);
-	std::cout << "disparity map size: " << L2R_disparity_map_values.size() << std::endl;
-	std::cout << "should be: 370440" << std::endl;
+	vector<unsigned char> L2R_disparity_map_values = calc_disparity_map(Left_img, left_img_window_avgs, Right_img, right_img_window_avgs, 0, max_disp, block_radius);
+	vector<unsigned char> R2L_disparity_map_values = calc_disparity_map(Right_img, right_img_window_avgs, Left_img, left_img_window_avgs, -max_disp, 0, block_radius);
+	
+	vector<unsigned char> L2R_disparity_map_normalised = normalise_disparity_map(L2R_disparity_map_values, max_disp);
+	vector<unsigned char> R2L_disparity_map_normalised = normalise_disparity_map(R2L_disparity_map_values, max_disp);
 	/*
 	// FOR DEBUGGING
 	// Encode the resized images
@@ -340,8 +354,8 @@ int main(int argc, const char *argv[]) {
 	std::cout << "Writing output images to disk..." << std::endl;
 	const char *greyscale_file_1 = "greyscale1.png";
 	const char *greyscale_file_2 = "greyscale2.png";
-	encode_to_greyscale_file(greyscale_file_1, L2R_disparity_map_values, scaled_width, scaled_height);
-	//encode_to_greyscale_file(greyscale_file_2, Right_img.pixels, scaled_width, scaled_height);
+	encode_to_greyscale_file(greyscale_file_1, L2R_disparity_map_normalised, scaled_width, scaled_height);
+	encode_to_greyscale_file(greyscale_file_2, R2L_disparity_map_normalised, scaled_width, scaled_height);
 	
 	int a = 0;
 	return 0;
