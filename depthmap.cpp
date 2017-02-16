@@ -163,13 +163,49 @@ unordered_map<unsigned, float> calc_window_averages(GreyscaleImage &image, int b
 	return avg_map;
 }
 
-vector<unsigned char> calc_diparity_map(GreyscaleImage &src_img,
-										unordered_map<unsigned, float> &src_img_window_avgs,
-										GreyscaleImage &ref_img,
-										unordered_map<unsigned, float> &ref_img_window_avgs,
-										unsigned max_disp, int block_radius) {
-	
-	for 
+vector<unsigned char> calc_diparity_map(GreyscaleImage &src_img, unordered_map<unsigned, float> &src_img_window_avgs, 
+										GreyscaleImage &ref_img, unordered_map<unsigned, float> &ref_img_window_avgs, 
+										int max_disp, int block_radius)
+{
+	unsigned pixel_number;
+	unsigned ref_img_pixel_number;
+	vector<unsigned char> disparity_map;
+	for (int y = 0; y < src_img.height; y++) {
+		if (y - block_radius < 0 || y + block_radius >= src_img.height) {
+			continue;
+		}
+		for (int x = 0; x < src_img.width; x++) {
+			if (x - block_radius < 0 || x + block_radius >= src_img.width) {
+				continue;
+			}
+			pixel_number = y*src_img.width + x;
+			float src_window_mean = src_img_window_avgs[pixel_number]; // TODO: put in a try-catch
+			vector<unsigned> src_window_pixels = get_window_around_point(src_img, x, y, block_radius);
+			
+			float zncc_numerator;
+			float zncc_denominator;
+			
+			for (unsigned i = 0; i < src_window_pixels.size(); i++) {
+				float src_window_diff = src_window_pixels[i] - src_window_mean;
+			}
+
+			for (int disparity = 0; disparity <= max_disp; disparity++) {
+				int offset = x - disparity;
+				if (offset - block_radius < 0) {
+					// Make sure that disparity values dont move the window outside of image.
+					continue;
+				}
+				ref_img_pixel_number = y*ref_img.width + offset;
+				float ref_window_mean = ref_img_window_avgs[ref_img_pixel_number];
+				vector<unsigned> ref_window_pixels = get_window_around_point(ref_img, offset, y, block_radius);
+
+				for (unsigned i = 0; i < ref_window_pixels.size(); i++) {
+					float ref_window_diff = ref_window_pixels[i] - ref_window_mean;
+				}
+			}
+		}
+	}
+	return disparity_map;
 }
 
 
