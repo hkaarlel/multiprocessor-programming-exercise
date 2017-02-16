@@ -140,12 +140,12 @@ unordered_map<unsigned, float> calc_window_averages(GreyscaleImage &image, int b
 
 	unsigned pixel_number;
 	unordered_map<unsigned, float> avg_map;
-	for (int y = 0; y < image.height; y++) {
-		if (y - block_radius < 0 || y + block_radius >= image.height) {
+	for (int y = 0; y < (int)image.height; y++) {
+		if (y - block_radius < 0 || y + block_radius >= (int)image.height) {
 			continue;
 		}
-		for (int x = 0; x < image.width; x++) {
-			if (x - block_radius < 0 || x + block_radius >= image.width) {
+		for (int x = 0; x < (int)image.width; x++) {
+			if (x - block_radius < 0 || x + block_radius >= (int)image.width) {
 				continue;
 			}
 
@@ -171,10 +171,10 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 	unsigned ref_img_pixel_number;
 	vector<unsigned char> disparity_map;
 	// For each pixel in source image...
-	for (int y = 0; y < src_img.height; y++) {
-		for (int x = 0; x < src_img.width; x++) {
-			if (x - block_radius < 0 || x + block_radius >= src_img.width ||
-				y - block_radius < 0 || y + block_radius >= src_img.height) {
+	for (int y = 0; y < (int)src_img.height; y++) {
+		for (int x = 0; x < (int)src_img.width; x++) {
+			if (x - block_radius < 0 || x + block_radius >= (int)src_img.width ||
+				y - block_radius < 0 || y + block_radius >= (int)src_img.height) {
 				//std::cout << "At column " << x << ", row " << y <<", writing 0 to disparity map." << std::endl;
 				disparity_map.push_back(0);
 				continue;
@@ -195,7 +195,7 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 			// for each disparity value...
 			for (int disparity = min_disp; disparity <= max_disp; disparity++) {
 				int offset = x - disparity; // offset = value of x in reference image
-				if (offset - block_radius < 0 || offset + block_radius >= src_img.width) {
+				if (offset - block_radius < 0 || offset + block_radius >= (int)src_img.width) {
 					break; // Make sure that disparity values dont move the window outside of image.
 				}
 				ref_img_pixel_number = y*ref_img.width + offset;
@@ -229,7 +229,7 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 vector<unsigned char> cross_check(vector<unsigned char> &left_image, vector<unsigned char> &right_image, int threshold) {
 	//Käy läpi kaksi listaa, vertailee keskenään, jos yli thresholdin niin vaihtaa tilalle nollan
 	vector<unsigned char> cross_checked_image = left_image;
-	for (int x = 0; x < left_image.size(); x++) {
+	for (int x = 0; x < (int)left_image.size(); x++) {
 		if (abs(left_image[x] - right_image[x]) > threshold)
 			cross_checked_image[x] = 0;
 	}
@@ -239,7 +239,7 @@ vector<unsigned char> cross_check(vector<unsigned char> &left_image, vector<unsi
 vector<unsigned char> occlusion_filling(vector<unsigned char> &image) {
 	//Käy läpi listan, jos löytyy nolla niin laittaa tilalle sitä edeltävän luvun. Jos eka on nolla niin käy läpi kunnes löytyy eka ei-nolla ja laittaa sen ekaksi. Hyvin yksiulotteinen
 	vector<unsigned char> occl_filled_image = image;
-	for (int x = 0; x < image.size(); x++) {
+	for (int x = 0; x < (int)image.size(); x++) {
 
 		if (image[x] = 0) {
 			//voi tehä paremmankin algoritmin, tämä ei esim. ota huomioon sitä et onko rivin ihan eka pikseli, jollon sitä ei kannata ottaa edellisestä pikselistä
