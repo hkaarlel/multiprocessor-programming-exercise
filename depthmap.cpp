@@ -124,9 +124,9 @@ void convert_to_greyscale(vector<unsigned char> &input_img, GreyscaleImage &outp
 	}
 }
 
-vector<unsigned> get_window_around_point(GreyscaleImage &image, unsigned center_x, unsigned center_y, int block_radius) {
+vector<unsigned char> get_window_around_point(GreyscaleImage &image, unsigned center_x, unsigned center_y, int block_radius) {
 
-	vector<unsigned> window_pixels;
+	vector<unsigned char> window_pixels;
 
 	for (unsigned y = center_y - block_radius; y <= center_y + block_radius; y++) {
 		for (unsigned x = center_x - block_radius; x <= center_x + block_radius; x++) {
@@ -149,7 +149,7 @@ unordered_map<unsigned, float> calc_window_averages(GreyscaleImage &image, int b
 				continue;
 			}
 
-			vector<unsigned> window_pixels = get_window_around_point(image, x, y, block_radius);
+			vector<unsigned char> window_pixels = get_window_around_point(image, x, y, block_radius);
 
 			unsigned sum = 0;
 			for (unsigned i = 0; i < window_pixels.size(); i++) {
@@ -175,7 +175,7 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 		for (int x = 0; x < src_img.width; x++) {
 			if (x - block_radius < 0 || x + block_radius >= src_img.width ||
 				y - block_radius < 0 || y + block_radius >= src_img.height) {
-				std::cout << "At column " << x << ", row " << y <<", writing 0 to disparity map." << std::endl;
+				//std::cout << "At column " << x << ", row " << y <<", writing 0 to disparity map." << std::endl;
 				disparity_map.push_back(0);
 				continue;
 			}
@@ -184,7 +184,7 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 			// get mean of pixel's window 
 			float src_window_mean = src_img_window_avgs[pixel_number];
 			// get actual values of window (vector.length = 81)
-			vector<unsigned> src_window_pixels = get_window_around_point(src_img, x, y, block_radius);
+			vector<unsigned char> src_window_pixels = get_window_around_point(src_img, x, y, block_radius);
 
 			float zncc_numerator_sum = 0;
 			float zncc_denominator_sum_L = 0;
@@ -200,7 +200,7 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 				}
 				ref_img_pixel_number = y*ref_img.width + offset;
 				float ref_window_mean = ref_img_window_avgs[ref_img_pixel_number];
-				vector<unsigned> ref_window_pixels = get_window_around_point(ref_img, offset, y, block_radius);
+				vector<unsigned char> ref_window_pixels = get_window_around_point(ref_img, offset, y, block_radius);
 				// for pixel in window...
 				for (unsigned i = 0; i < src_window_pixels.size(); i++) {
 
@@ -219,7 +219,7 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 					best_disparity_value = abs(disparity);
 				}
 			}
-			std::cout << "Disparity for (" << x << "," << y << ") is " << (int)best_disparity_value << std::endl;
+			//std::cout << "Disparity for (" << x << "," << y << ") is " << (int)best_disparity_value << std::endl;
 			disparity_map.push_back(best_disparity_value);
 		}
 	}
@@ -333,6 +333,9 @@ int main(int argc, const char *argv[]) {
 	std::cout << "Mapping window averages..." << std::endl;
 	unordered_map<unsigned, float> left_img_window_avgs = calc_window_averages(Left_img, block_radius);
 	unordered_map<unsigned, float> right_img_window_avgs = calc_window_averages(Right_img, block_radius);
+	std::cout << "Len left avgs: "<< left_img_window_avgs.size() << std::endl;
+	std::cout << "Len right avgs: "<< right_img_window_avgs.size() << std::endl;
+	std::cout << "Both should be: 360592" << std::endl;
 
 	int max_disp = MAX_DISP / 4;
 	std::cout << "Calculating disparity maps..." << std::endl;
