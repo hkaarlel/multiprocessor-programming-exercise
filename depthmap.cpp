@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <unordered_map>
+#include <cmath>
 
 #include "lodepng.h"
 
@@ -61,7 +62,6 @@ HiFi:
 
 #define MAX_DISP 260
 
-using std::cout;
 using std::vector;
 using std::unordered_map;
 
@@ -170,39 +170,55 @@ vector<unsigned char> calc_diparity_map(GreyscaleImage &src_img, unordered_map<u
 	unsigned pixel_number;
 	unsigned ref_img_pixel_number;
 	vector<unsigned char> disparity_map;
+	// For each pixel in source image...
 	for (int y = 0; y < src_img.height; y++) {
-		if (y - block_radius < 0 || y + block_radius >= src_img.height) {
-			continue;
-		}
 		for (int x = 0; x < src_img.width; x++) {
-			if (x - block_radius < 0 || x + block_radius >= src_img.width) {
+			if (x - block_radius < 0 || x + block_radius >= src_img.width ||
+				y - block_radius < 0 || y + block_radius >= src_img.height) {
+				std::cout << "At column " << x << ", row " << y <<", writing 0 to disparity map." << std::endl;
+				disparity_map.push_back(0);
 				continue;
 			}
+			// get pixel number (to get window mean value from map)
 			pixel_number = y*src_img.width + x;
-			float src_window_mean = src_img_window_avgs[pixel_number]; // TODO: put in a try-catch
+			// get mean of pixel's window 
+			float src_window_mean = src_img_window_avgs[pixel_number];
+			// get actual values of window (vector.length = 81)
 			vector<unsigned> src_window_pixels = get_window_around_point(src_img, x, y, block_radius);
-			
-			float zncc_numerator;
-			float zncc_denominator;
-			
-			for (unsigned i = 0; i < src_window_pixels.size(); i++) {
-				float src_window_diff = src_window_pixels[i] - src_window_mean;
-			}
 
+			float zncc_numerator_sum = 0;
+			float zncc_denominator_sum = 0;
+			float zncc = 0;
+			float best_zncc = 0;
+			unsigned char best_disparity_value = 0;
+			// for each disparity value...
 			for (int disparity = 0; disparity <= max_disp; disparity++) {
-				int offset = x - disparity;
+				
+				int offset = x - disparity; // offset = value of x in reference image
 				if (offset - block_radius < 0) {
-					// Make sure that disparity values dont move the window outside of image.
-					continue;
+					continue; // Make sure that disparity values dont move the window outside of image.
 				}
 				ref_img_pixel_number = y*ref_img.width + offset;
 				float ref_window_mean = ref_img_window_avgs[ref_img_pixel_number];
 				vector<unsigned> ref_window_pixels = get_window_around_point(ref_img, offset, y, block_radius);
+				// for pixel in window...
+				for (unsigned i = 0; i < src_window_pixels.size(); i++) {
 
-				for (unsigned i = 0; i < ref_window_pixels.size(); i++) {
+					float src_window_diff = src_window_pixels[i] - src_window_mean;
+
 					float ref_window_diff = ref_window_pixels[i] - ref_window_mean;
+
+					zncc_numerator_sum += src_window_diff * ref_window_diff;
+					zncc_denominator_sum += pow(src_window_diff, 2) * pow(ref_window_diff, 2);
+				}
+				zncc = zncc_numerator_sum / sqrt(zncc_denominator_sum);
+				if (zncc > best_zncc) {
+					best_zncc = zncc;
+					best_disparity_value = disparity;
 				}
 			}
+			std::cout << "Disparity for (" << x << "," << y << ") is " << (int)best_disparity_value << std::endl;
+			disparity_map.push_back(best_disparity_value);
 		}
 	}
 	return disparity_map;
@@ -245,6 +261,7 @@ int main(int argc, const char *argv[]) {
 	vector<unsigned char> right_img_scaled = vector<unsigned char>();
 
 	// create resized images from original image
+	std::cout << "Resizing images..." << std::endl;
 	reduce_img_size(left_img, height, width, left_img_scaled);
 	reduce_img_size(right_img, height, width, right_img_scaled);
 
@@ -253,6 +270,7 @@ int main(int argc, const char *argv[]) {
 	GreyscaleImage Right_img = { scaled_width, scaled_height };
 
 	// create greyscale images from resized images
+	std::cout << "Creating greyscale images..." << std::endl;
 	convert_to_greyscale(left_img_scaled, Left_img);
 	convert_to_greyscale(right_img_scaled, Right_img);
 
@@ -262,15 +280,16 @@ int main(int argc, const char *argv[]) {
 	}
 
 	int block_radius = (BLOCK_SIZE - 1) / 2;
-
+	std::cout << "Mapping window averages..." << std::endl;
 	unordered_map<unsigned, float> left_img_window_avgs = calc_window_averages(Left_img, block_radius);
 	unordered_map<unsigned, float> right_img_window_avgs = calc_window_averages(Right_img, block_radius);
 
 	int max_disp = MAX_DISP / 4;
-
+	std::cout << "Calculating disparity maps..." << std::endl;
 	vector<unsigned char> L2R_disparity_map_values = calc_diparity_map(Left_img, left_img_window_avgs, Right_img, right_img_window_avgs, max_disp, block_radius);
-	vector<unsigned char> R2L_disparity_map_values = calc_diparity_map(Right_img, right_img_window_avgs, Left_img, left_img_window_avgs, max_disp, block_radius);
-
+	//vector<unsigned char> R2L_disparity_map_values = calc_diparity_map(Right_img, right_img_window_avgs, Left_img, left_img_window_avgs, max_disp, block_radius);
+	std::cout << "disparity map size: " << L2R_disparity_map_values.size() << std::endl;
+	std::cout << "should be: 370440" << std::endl;
 	/*
 	// FOR DEBUGGING
 	// Encode the resized images
@@ -278,14 +297,15 @@ int main(int argc, const char *argv[]) {
 	const char *resized_filename_2 = "resized2.png";
 	encode_to_32_file(resized_filename_1, left_img_scaled, scaled_width, scaled_height);
 	encode_to_32_file(resized_filename_2, right_img_scaled, scaled_width, scaled_height);
-	
+	*/
 	// FOR DEBUGGING
 	// Encode the greyscale images
+	std::cout << "Writing output images to disk..." << std::endl;
 	const char *greyscale_file_1 = "greyscale1.png";
 	const char *greyscale_file_2 = "greyscale2.png";
-	encode_to_greyscale_file(greyscale_file_1, Left_img.pixels, scaled_width, scaled_height);
-	encode_to_greyscale_file(greyscale_file_2, Right_img.pixels, scaled_width, scaled_height);
-	*/
+	encode_to_greyscale_file(greyscale_file_1, L2R_disparity_map_values, scaled_width, scaled_height);
+	//encode_to_greyscale_file(greyscale_file_2, Right_img.pixels, scaled_width, scaled_height);
+	
 	int a = 0;
 	return 0;
 	
