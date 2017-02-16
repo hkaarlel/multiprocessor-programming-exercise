@@ -224,6 +224,43 @@ vector<unsigned char> calc_diparity_map(GreyscaleImage &src_img, unordered_map<u
 	return disparity_map;
 }
 
+vector<unsigned char> cross_check(vector<unsigned char> &left_image, vector<unsigned char> &right_image, int threshold) {
+	//Käy läpi kaksi listaa, vertailee keskenään, jos yli thresholdin niin vaihtaa tilalle nollan
+	vector<unsigned char> cross_checked_image = left_image;
+	for (int x = 0; x < left_image.size; x++) {
+		if (abs(left_image[x] - right_image[x]) > threshold)
+			cross_checked_image[x] = 0;
+	}
+	return cross_checked_image;
+}
+
+vector<unsigned char> occlusion_filling(vector<unsigned char> &image) {
+	//Käy läpi listan, jos löytyy nolla niin laittaa tilalle sitä edeltävän luvun. Jos eka on nolla niin käy läpi kunnes löytyy eka ei-nolla ja laittaa sen ekaksi. Hyvin yksiulotteinen
+	vector<unsigned char> occl_filled_image = image;
+	for (int x = 0; x < image.size; x++) {
+
+		if (image[x] = 0) {
+			//voi tehä paremmankin algoritmin, tämä ei esim. ota huomioon sitä et onko rivin ihan eka pikseli, jollon sitä ei kannata ottaa edellisestä pikselistä
+			if (x > 0) {
+				occl_filled_image[x] = occl_filled_image[x-1];
+			}
+
+			if (x = 0) {
+				int i = 0;
+				while (true) {
+					i++;
+					if (occl_filled_image[i] != 0) {
+						occl_filled_image[x] = occl_filled_image[i];
+						break;
+					}
+				}
+			}
+
+		}
+			
+	}
+	return occl_filled_image;
+}
 
 int main(int argc, const char *argv[]) {
 	
