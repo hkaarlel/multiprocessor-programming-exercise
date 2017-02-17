@@ -50,7 +50,7 @@ HiFi:
 	- handle input image of any dimensions
 	- resize image to any fraction
 */
-#define BLOCK_SIZE 9 // Has to be uneven i.e. 9, 15, 25
+#define BLOCK_SIZE 15 // Has to be uneven i.e. 9, 15, 25
 
 #define BYTES_PER_PIXEL 4 // 3 = RGB (24-bit), 4 = RGBA (32-bit)
 
@@ -168,22 +168,23 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 										int min_disp, int max_disp, int block_radius)
 {
 	unsigned pixel_number;
-	unsigned ref_img_pixel_number;
+	unsigned ref_img_pixel_index;
 	vector<unsigned char> disparity_map;
 	// For each pixel in source image...
 	for (int y = 0; y < (int)src_img.height; y++) {
 		for (int x = 0; x < (int)src_img.width; x++) {
+			// Only consider pixels that can be windowed
 			if (x - block_radius < 0 || x + block_radius >= (int)src_img.width ||
 				y - block_radius < 0 || y + block_radius >= (int)src_img.height) {
 				//std::cout << "At column " << x << ", row " << y <<", writing 0 to disparity map." << std::endl;
 				disparity_map.push_back(0);
 				continue;
 			}
-			// get pixel number (to get window mean value from map)
+			// Get pixel index to get window mean value from map
 			pixel_number = y*src_img.width + x;
-			// get mean of pixel's window 
+			// Get mean of pixel's window 
 			float src_window_mean = src_img_window_avgs[pixel_number];
-			// get actual values of window (vector.length = 81)
+			// Get pixel values of window (length = blocksize**2 = 81)
 			vector<unsigned char> src_window_pixels = get_window_around_point(src_img, x, y, block_radius);
 
 			float zncc_numerator_sum = 0;
@@ -192,18 +193,18 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 			float zncc = 0;
 			float best_zncc = 0;
 			unsigned char best_disparity_value = 0;
-			// for each disparity value...
+			// For each disparity value...
 			for (int disparity = min_disp; disparity <= max_disp; disparity++) {
 				int offset = x - disparity; // offset = value of x in reference image
 				if (offset - block_radius < 0 || offset + block_radius >= (int)src_img.width) {
 					break; // Make sure that disparity values dont move the window outside of image.
 				}
-				ref_img_pixel_number = y*ref_img.width + offset;
-				float ref_window_mean = ref_img_window_avgs[ref_img_pixel_number];
+				ref_img_pixel_index = y*ref_img.width + offset;
+				float ref_window_mean = ref_img_window_avgs[ref_img_pixel_index];
 				vector<unsigned char> ref_window_pixels = get_window_around_point(ref_img, offset, y, block_radius);
-				// for pixel in window...
+				// For pixel in window...
 				for (unsigned i = 0; i < src_window_pixels.size(); i++) {
-
+					
 					float src_window_diff = src_window_pixels[i] - src_window_mean;
 
 					float ref_window_diff = ref_window_pixels[i] - ref_window_mean;
@@ -212,7 +213,7 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 					zncc_denominator_sum_L += pow(src_window_diff, 2);
 					zncc_denominator_sum_R += pow(ref_window_diff, 2);
 				}
-
+				// Calculate ZNCC, store highest disparity value
 				zncc = zncc_numerator_sum / (sqrt(zncc_denominator_sum_L) * sqrt(zncc_denominator_sum_R));
 				if (zncc > best_zncc) {
 					best_zncc = zncc;
@@ -305,6 +306,7 @@ int main(int argc, const char *argv[]) {
 	const char* filename_1 = argc > 1 ? argv[1] : "im0.png";
 	const char* filename_2 = argc > 2 ? argv[2] : "im1.png";
 
+	// Read im0 to memory
 	unsigned int L_img_width, L_img_height;
 	vector<unsigned char> left_img = vector<unsigned char>();
 	decodeFile(filename_1, left_img, L_img_width, L_img_height);
@@ -315,9 +317,9 @@ int main(int argc, const char *argv[]) {
 		exit(1);
 	}
 
+	// Read im1 to memory
 	unsigned int R_img_width, R_img_height;
 	vector<unsigned char> right_img = vector<unsigned char>();
-
 	decodeFile(filename_2, right_img, R_img_width, R_img_height);
 	
 	if (L_img_width != R_img_width || L_img_height != R_img_height) {
@@ -331,33 +333,35 @@ int main(int argc, const char *argv[]) {
 	unsigned int scaled_width = width / 4;
 	unsigned int scaled_height = height / 4;
 
-	// allocate memory for resized images
+	// Allocate memory for resized images
 	vector<unsigned char> left_img_scaled = vector<unsigned char>();
 	vector<unsigned char> right_img_scaled = vector<unsigned char>();
 
-	// create resized images from original image
+	// Create resized images from original image
 	std::cout << "Resizing images..." << std::endl;
 	reduce_img_size(left_img, height, width, left_img_scaled);
 	std::cout << "Image 1 done... ";
 	reduce_img_size(right_img, height, width, right_img_scaled);
 	std::cout << "Image 2 done" << std::endl;
 
-	// allocate memory for greyscale image
+	// Allocate memory for greyscale image
 	GreyscaleImage Left_img = { scaled_width, scaled_height };
 	GreyscaleImage Right_img = { scaled_width, scaled_height };
 
-	// create greyscale images from resized images
+	// Create greyscale images from resized images
 	std::cout << "Creating greyscale images..." << std::endl;
 	convert_to_greyscale(left_img_scaled, Left_img);
 	std::cout << "Image 1 done... ";
 	convert_to_greyscale(right_img_scaled, Right_img);
 	std::cout << "Image 2 done" << std::endl;
 
+	// Check that greyscale images still have the correct dimensions
 	if (Left_img.pixels.size() != scaled_width*scaled_height 
 		|| Right_img.pixels.size() != scaled_width*scaled_height) {
 		std::cout << "Greyscale image has wrong dimensions! Aborting..." << std::endl;
 	}
 
+	// Create unordered_map (pixelIndex, windowMean) of window means for both images
 	int block_radius = (BLOCK_SIZE - 1) / 2;
 	std::cout << "Mapping window averages..." << std::endl;
 	unordered_map<unsigned, float> left_img_window_avgs = calc_window_averages(Left_img, block_radius);
@@ -365,6 +369,7 @@ int main(int argc, const char *argv[]) {
 	unordered_map<unsigned, float> right_img_window_avgs = calc_window_averages(Right_img, block_radius);
 	std::cout << "Image 2 done" << std::endl;
 
+	// Calculate disparity maps using ZNCC
 	int max_disp = MAX_DISP / 4;
 	std::cout << "Calculating disparity maps..." << std::endl;
 	vector<unsigned char> L2R_disparity_map_values = calc_disparity_map(Left_img, left_img_window_avgs, Right_img, right_img_window_avgs, 0, max_disp, block_radius);
@@ -375,7 +380,7 @@ int main(int argc, const char *argv[]) {
 	GreyscaleImage L_disparity_map = { scaled_width, scaled_height, L2R_disparity_map_values };
 	GreyscaleImage R_disparity_map = { scaled_width, scaled_height, R2L_disparity_map_values };
 
-	// Post-processing
+	// Post-process images
 	std::cout << "Postprocessing..." << std::endl;
 	GreyscaleImage x_checked = cross_check(L_disparity_map, R_disparity_map, 8);
 	std::cout << "cross check done... ";
@@ -398,9 +403,10 @@ int main(int argc, const char *argv[]) {
 	// Encode the greyscale images
 	std::cout << "Writing output images to disk..." << std::endl;
 	const char *greyscale_file_1 = "greyscale1.png";
-	//const char *greyscale_file_2 = "greyscale2.png";
 	encode_to_greyscale_file(greyscale_file_1, normalized.pixels, scaled_width, scaled_height);
-	//encode_to_greyscale_file(greyscale_file_2, R2L_disparity_map_normalised, scaled_width, scaled_height);
+
+	//const char *greyscale_file_2 = "greyscale2.png";
+	//encode_to_greyscale_file(greyscale_file_2, R_disparity_map.pixels, scaled_width, scaled_height);
 	std::cout << "All done!" << std::endl;
 	int a = 0;
 	return 0;
