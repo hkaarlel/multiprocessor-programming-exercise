@@ -226,27 +226,53 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 	return disparity_map;
 }
 
-vector<unsigned char> cross_check(vector<unsigned char> &left_image, vector<unsigned char> &right_image, int threshold) {
+GreyscaleImage cross_check(GreyscaleImage &left_image, GreyscaleImage &right_image, int threshold) {
 	//Käy läpi kaksi listaa, vertailee keskenään, jos yli thresholdin niin vaihtaa tilalle nollan
-	vector<unsigned char> cross_checked_image = left_image;
-	for (int x = 0; x < (int)left_image.size(); x++) {
-		if (abs(left_image[x] - right_image[x]) > threshold)
-			cross_checked_image[x] = 0;
+	GreyscaleImage cross_checked_image;
+	cross_checked_image.height = left_image.height;
+	cross_checked_image.width = left_image.width;
+	cross_checked_image.pixels = left_image.pixels;
+	for (int x = 0; x < (int)left_image.pixels.size(); x++) {
+		if (abs(left_image.pixels[x] - right_image.pixels[x]) > threshold)
+			cross_checked_image.pixels[x] = 0;
 	}
 	return cross_checked_image;
 }
 
-vector<unsigned char> occlusion_filling(vector<unsigned char> &image) {
+GreyscaleImage occlusion_filling(GreyscaleImage &image) {
 	//Käy läpi listan, jos löytyy nolla niin laittaa tilalle sitä edeltävän luvun. Jos eka on nolla niin käy läpi kunnes löytyy eka ei-nolla ja laittaa sen ekaksi. Hyvin yksiulotteinen
-	vector<unsigned char> occl_filled_image = image;
-	for (int x = 0; x < (int)image.size(); x++) {
+	GreyscaleImage occl_filled_image;
+	occl_filled_image.height = image.height;
+	occl_filled_image.width = image.width;
+	occl_filled_image.pixels = vector<unsigned char>();
 
-		if (image[x] = 0) {
-			//voi tehä paremmankin algoritmin, tämä ei esim. ota huomioon sitä et onko rivin ihan eka pikseli, jollon sitä ei kannata ottaa edellisestä pikselistä
+	unsigned char first_nonzero;
+	for (int i = 0; ; i++) {
+		if (image.pixels[i] != 0) {
+			first_nonzero = image.pixels[i];
+			break;
+		}
+	}
+	unsigned char near_nonzero = first_nonzero;
+
+	for (int y = 0; y < (int)image.height; y++) {
+		for (int x = 0; x < (int)image.width; x++) {
+			unsigned char pixel_val = image.get_pixel(x, y);
+			if (pixel_val == 0) {
+				occl_filled_image.pixels.push_back(near_nonzero);
+			}
+			else {
+				near_nonzero = pixel_val;
+				occl_filled_image.pixels.push_back(pixel_val);
+			}
+		}
+	}
+	return occl_filled_image;
+	/*
+	voi tehä paremmankin algoritmin, tämä ei esim. ota huomioon sitä et onko rivin ihan eka pikseli, jollon sitä ei kannata ottaa edellisestä pikselistä
 			if (x > 0) {
 				occl_filled_image[x] = occl_filled_image[x-1];
 			}
-
 			if (x = 0) {
 				int i = 0;
 				while (true) {
@@ -257,20 +283,19 @@ vector<unsigned char> occlusion_filling(vector<unsigned char> &image) {
 					}
 				}
 			}
-
-		}
-			
-	}
-	return occl_filled_image;
+	*/
 }
 
-vector<unsigned char> normalise_disparity_map(vector<unsigned char> &disp_map, int max_disp) {
+GreyscaleImage normalise_disparity_map(GreyscaleImage &disp_map, int max_disp) {
 	int max_value = 255;
-	vector<unsigned char> normalised = vector<unsigned char>();
-	for (vector<unsigned char>::iterator it = disp_map.begin(); it != disp_map.end(); ++it) {
+	GreyscaleImage normalised;
+	normalised.height = disp_map.height;
+	normalised.width  =disp_map.width;
+	normalised.pixels = vector<unsigned char>();
+	for (vector<unsigned char>::iterator it = disp_map.pixels.begin(); it != disp_map.pixels.end(); ++it) {
 		unsigned char val = *it;
 		unsigned char normalized_val = (val * max_value) / max_disp;
-		normalised.push_back(normalized_val);
+		normalised.pixels.push_back(normalized_val);
 	}
 	return normalised;
 }
@@ -313,7 +338,9 @@ int main(int argc, const char *argv[]) {
 	// create resized images from original image
 	std::cout << "Resizing images..." << std::endl;
 	reduce_img_size(left_img, height, width, left_img_scaled);
+	std::cout << "Image 1 done... ";
 	reduce_img_size(right_img, height, width, right_img_scaled);
+	std::cout << "Image 2 done" << std::endl;
 
 	// allocate memory for greyscale image
 	GreyscaleImage Left_img = { scaled_width, scaled_height };
@@ -322,7 +349,9 @@ int main(int argc, const char *argv[]) {
 	// create greyscale images from resized images
 	std::cout << "Creating greyscale images..." << std::endl;
 	convert_to_greyscale(left_img_scaled, Left_img);
+	std::cout << "Image 1 done... ";
 	convert_to_greyscale(right_img_scaled, Right_img);
+	std::cout << "Image 2 done" << std::endl;
 
 	if (Left_img.pixels.size() != scaled_width*scaled_height 
 		|| Right_img.pixels.size() != scaled_width*scaled_height) {
@@ -332,18 +361,31 @@ int main(int argc, const char *argv[]) {
 	int block_radius = (BLOCK_SIZE - 1) / 2;
 	std::cout << "Mapping window averages..." << std::endl;
 	unordered_map<unsigned, float> left_img_window_avgs = calc_window_averages(Left_img, block_radius);
+	std::cout << "Image 1 done... ";
 	unordered_map<unsigned, float> right_img_window_avgs = calc_window_averages(Right_img, block_radius);
-	std::cout << "Len left avgs: "<< left_img_window_avgs.size() << std::endl;
-	std::cout << "Len right avgs: "<< right_img_window_avgs.size() << std::endl;
-	std::cout << "Both should be: 360592" << std::endl;
+	std::cout << "Image 2 done" << std::endl;
 
 	int max_disp = MAX_DISP / 4;
 	std::cout << "Calculating disparity maps..." << std::endl;
 	vector<unsigned char> L2R_disparity_map_values = calc_disparity_map(Left_img, left_img_window_avgs, Right_img, right_img_window_avgs, 0, max_disp, block_radius);
+	std::cout << "Image 1 done... ";
 	vector<unsigned char> R2L_disparity_map_values = calc_disparity_map(Right_img, right_img_window_avgs, Left_img, left_img_window_avgs, -max_disp, 0, block_radius);
+	std::cout << "Image 2 done" << std::endl;
+
+	GreyscaleImage L_disparity_map = { scaled_width, scaled_height, L2R_disparity_map_values };
+	GreyscaleImage R_disparity_map = { scaled_width, scaled_height, R2L_disparity_map_values };
+
+	// Post-processing
+	std::cout << "Postprocessing..." << std::endl;
+	GreyscaleImage x_checked = cross_check(L_disparity_map, R_disparity_map, 8);
+	std::cout << "cross check done... ";
+	GreyscaleImage occ_filled = occlusion_filling(x_checked);
+	std::cout << "occlusion filling done" << std::endl;
+
+	std::cout << "Normalizing pixel values..." << std::endl;
+	GreyscaleImage normalized = normalise_disparity_map(occ_filled, max_disp);
 	
-	vector<unsigned char> L2R_disparity_map_normalised = normalise_disparity_map(L2R_disparity_map_values, max_disp);
-	vector<unsigned char> R2L_disparity_map_normalised = normalise_disparity_map(R2L_disparity_map_values, max_disp);
+	//vector<unsigned char> R2L_disparity_map_normalised = normalise_disparity_map(R2L_disparity_map_values, max_disp);
 	/*
 	// FOR DEBUGGING
 	// Encode the resized images
@@ -356,10 +398,10 @@ int main(int argc, const char *argv[]) {
 	// Encode the greyscale images
 	std::cout << "Writing output images to disk..." << std::endl;
 	const char *greyscale_file_1 = "greyscale1.png";
-	const char *greyscale_file_2 = "greyscale2.png";
-	encode_to_greyscale_file(greyscale_file_1, L2R_disparity_map_normalised, scaled_width, scaled_height);
-	encode_to_greyscale_file(greyscale_file_2, R2L_disparity_map_normalised, scaled_width, scaled_height);
-	
+	//const char *greyscale_file_2 = "greyscale2.png";
+	encode_to_greyscale_file(greyscale_file_1, normalized.pixels, scaled_width, scaled_height);
+	//encode_to_greyscale_file(greyscale_file_2, R2L_disparity_map_normalised, scaled_width, scaled_height);
+	std::cout << "All done!" << std::endl;
 	int a = 0;
 	return 0;
 	
