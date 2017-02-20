@@ -45,7 +45,10 @@
 
 */
 
-#define BLOCK_SIZE 15 // Has to be uneven i.e. 9, 15, 25
+// TODO: replace in-code blockradius with BLOCK_RADIUS
+
+#define BLOCK_SIZE 9 // Has to be uneven i.e. 9, 15, 25
+#define BLOCK_RADIUS (BLOCK_SIZE - 1) / 2
 
 #define BYTES_PER_PIXEL 4 // 3 = RGB (24-bit), 4 = RGBA (32-bit)
 
@@ -133,7 +136,7 @@ vector<unsigned char> get_window_around_point(GreyscaleImage &image, unsigned ce
 
 unordered_map<unsigned, float> calc_window_averages(GreyscaleImage &image, int block_radius) {
 
-	unsigned pixel_number;
+	unsigned pixel_index;
 	unordered_map<unsigned, float> avg_map;
 	for (int y = 0; y < (int)image.height; y++) {
 		if (y - block_radius < 0 || y + block_radius >= (int)image.height) {
@@ -151,8 +154,8 @@ unordered_map<unsigned, float> calc_window_averages(GreyscaleImage &image, int b
 				sum += window_pixels[i];
 			}
 			float mean = (float)sum / (float)(BLOCK_SIZE * BLOCK_SIZE);
-			pixel_number = y*image.width + x;
-			avg_map.insert({pixel_number, mean});
+			pixel_index = y*image.width + x;
+			avg_map.insert({ pixel_index, mean});
 		}
 	}
 	return avg_map;
@@ -162,7 +165,7 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 										GreyscaleImage &ref_img, unordered_map<unsigned, float> &ref_img_window_avgs, 
 										int min_disp, int max_disp, int block_radius)
 {
-	unsigned pixel_number;
+	unsigned pixel_index;
 	unsigned ref_img_pixel_index;
 	vector<unsigned char> disparity_map;
 	// For each pixel in source image...
@@ -176,9 +179,9 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 				continue;
 			}
 			// Get pixel index to get window mean value from map
-			pixel_number = y*src_img.width + x;
+			pixel_index = y*src_img.width + x;
 			// Get mean of pixel's window 
-			float src_window_mean = src_img_window_avgs[pixel_number];
+			float src_window_mean = src_img_window_avgs[pixel_index];
 			// Get pixel values of window (length = blocksize**2 = 81)
 			vector<unsigned char> src_window_pixels = get_window_around_point(src_img, x, y, block_radius);
 
@@ -243,44 +246,74 @@ GreyscaleImage cross_check(GreyscaleImage &left_image, GreyscaleImage &right_ima
 	return cross_checked_image;
 }
 
+unsigned char get_nearest_nonzero_pixel(GreyscaleImage &image, unsigned target_x, unsigned target_y) {
+	
+	/*
+	[ t o p ] r
+	l # # # # i
+	e # # # # g
+	e # # # # h
+	f # # # # t
+	t [ b o t ] 
+	*/
+
+	int radius = 1;
+	unsigned char sentinel = 0;
+	while (true) {
+		// right side
+		int x = radius;
+		for (int y = radius; y > -radius; y--) {
+			// handle right pixels
+			sentinel = image.get_pixel((target_x + x), (target_y + y));
+			if (sentinel) return sentinel;
+		}
+		// bottom
+		int y = -radius;
+		for (int x = radius; x > -radius; x--) {
+			// handle bottom pixels
+			sentinel = image.get_pixel((target_x + x), (target_y + y));
+			if (sentinel) return sentinel;
+		}
+		// left side
+		x = -radius;
+		for (int y = -radius; y < radius; y++) {
+			// handle left pixels
+			sentinel = image.get_pixel((target_x + x), (target_y + y));
+			if (sentinel) return sentinel;
+		}
+		// top
+		y = radius;
+		for (int x = -radius; x < radius; x++) {
+			// handle top pixels
+			sentinel = image.get_pixel((target_x + x), (target_y + y));
+			if (sentinel) return sentinel;
+		}
+		radius++;
+	}
+}
+
 GreyscaleImage occlusion_filling(GreyscaleImage &image) {
-	//Käy läpi listan, jos löytyy nolla niin laittaa tilalle sitä edeltävän luvun. Jos eka on nolla niin käy läpi kunnes löytyy eka ei-nolla ja laittaa sen ekaksi. Hyvin yksiulotteinen
+	int block_radius = (BLOCK_SIZE - 1) / 2;
 	GreyscaleImage occl_filled_image;
 	occl_filled_image.height = image.height;
 	occl_filled_image.width = image.width;
 	occl_filled_image.pixels = vector<unsigned char>();
 
-	unsigned char first_nonzero_index;
-	for (int i = 0; ; i++) {
-		if (image.pixels[i] != 0) {
-			first_nonzero_index = i;
-			break;
-		}
-	}
 	unsigned char pixel_val;
-	unsigned row_start_index = first_nonzero_index;
-	unsigned row_end_index = first_nonzero_index;
-	for (int y = 0; y < (int)image.height; y++) {
-		for (int x = 0; x < (int)image.width; x++) {
-			if (x == 0) {
-				row_start_index = (y*image.width);
-				row_end_index = ((y + 1)*image.width - 1);
-				if (row_end_index > image.height * image.width) {
-					row_end_index = (image.height * image.width) - 1;
-				}
+	for (unsigned y = 0; y < image.height; y++) {
+		for (unsigned x = 0; x < image.width; x++) {
+			// ignore pixels that are 0
+			if (x - block_radius < 0 || x + block_radius >= image.width ||
+				y - block_radius < 0 || y + block_radius >= image.height) {
+				occl_filled_image.pixels.push_back(0);
+				continue;
 			}
 			pixel_val = image.get_pixel(x, y);
-			if (pixel_val == 0) {
-				unsigned char default = image.pixels[first_nonzero_index];
-				for (unsigned i = row_start_index; i <= row_end_index; ++i) {
-					if (image.pixels[i] != 0) {
-						default = image.pixels[i];
-					}
-					occl_filled_image.pixels.push_back(default);
-				}
+			if (pixel_val) {
+				occl_filled_image.pixels.push_back(pixel_val);
 			}
 			else {
-				occl_filled_image.pixels.push_back(pixel_val);
+				occl_filled_image.pixels.push_back(get_nearest_nonzero_pixel(image, x, y));
 			}
 		}
 	}
@@ -291,7 +324,7 @@ GreyscaleImage normalise_disparity_map(GreyscaleImage &disp_map, int max_disp) {
 	int max_value = 255;
 	GreyscaleImage normalised;
 	normalised.height = disp_map.height;
-	normalised.width  =disp_map.width;
+	normalised.width  = disp_map.width;
 	normalised.pixels = vector<unsigned char>();
 	for (vector<unsigned char>::iterator it = disp_map.pixels.begin(); it != disp_map.pixels.end(); ++it) {
 		unsigned char val = *it;
@@ -382,13 +415,13 @@ int main(int argc, const char *argv[]) {
 
 	// Post-process images
 	std::cout << "Postprocessing..." << std::endl;
-	GreyscaleImage x_checked = cross_check(L_disparity_map, R_disparity_map, 10);
+	GreyscaleImage x_checked = cross_check(L_disparity_map, R_disparity_map, 20);
 	std::cout << "cross check done... ";
-	//GreyscaleImage occ_filled = occlusion_filling(x_checked);
+	GreyscaleImage occ_filled = occlusion_filling(x_checked);
 	std::cout << "occlusion filling done" << std::endl;
 
 	std::cout << "Normalizing pixel values..." << std::endl;
-	GreyscaleImage normalized = normalise_disparity_map(x_checked, max_disp);
+	GreyscaleImage normalized = normalise_disparity_map(occ_filled, max_disp);
 	
 	//vector<unsigned char> R2L_disparity_map_normalised = normalise_disparity_map(R2L_disparity_map_values, max_disp);
 	/*
