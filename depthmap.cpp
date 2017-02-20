@@ -45,11 +45,6 @@
 
 */
 
-/*
-HiFi:
-	- handle input image of any dimensions
-	- resize image to any fraction
-*/
 #define BLOCK_SIZE 15 // Has to be uneven i.e. 9, 15, 25
 
 #define BYTES_PER_PIXEL 4 // 3 = RGB (24-bit), 4 = RGBA (32-bit)
@@ -229,13 +224,21 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 
 GreyscaleImage cross_check(GreyscaleImage &left_image, GreyscaleImage &right_image, int threshold) {
 	//Käy läpi kaksi listaa, vertailee keskenään, jos yli thresholdin niin vaihtaa tilalle nollan
+	/*
+	instead of 
+	abs(Left[index] - Right[index])
+	DO THIS
+	abs(Left[index] - Right[index - Left[index]])
+	*/
+
 	GreyscaleImage cross_checked_image;
 	cross_checked_image.height = left_image.height;
 	cross_checked_image.width = left_image.width;
 	cross_checked_image.pixels = left_image.pixels;
 	for (int x = 0; x < (int)left_image.pixels.size(); x++) {
-		if (abs(left_image.pixels[x] - right_image.pixels[x]) > threshold)
+		if (abs(left_image.pixels[x] - right_image.pixels[x - left_image.pixels[x]]) > threshold) {
 			cross_checked_image.pixels[x] = 0;
+		}
 	}
 	return cross_checked_image;
 }
@@ -247,44 +250,41 @@ GreyscaleImage occlusion_filling(GreyscaleImage &image) {
 	occl_filled_image.width = image.width;
 	occl_filled_image.pixels = vector<unsigned char>();
 
-	unsigned char first_nonzero;
+	unsigned char first_nonzero_index;
 	for (int i = 0; ; i++) {
 		if (image.pixels[i] != 0) {
-			first_nonzero = image.pixels[i];
+			first_nonzero_index = i;
 			break;
 		}
 	}
-	unsigned char near_nonzero = first_nonzero;
-
+	unsigned char pixel_val;
+	unsigned row_start_index = first_nonzero_index;
+	unsigned row_end_index = first_nonzero_index;
 	for (int y = 0; y < (int)image.height; y++) {
 		for (int x = 0; x < (int)image.width; x++) {
-			unsigned char pixel_val = image.get_pixel(x, y);
+			if (x == 0) {
+				row_start_index = (y*image.width);
+				row_end_index = ((y + 1)*image.width - 1);
+				if (row_end_index > image.height * image.width) {
+					row_end_index = (image.height * image.width) - 1;
+				}
+			}
+			pixel_val = image.get_pixel(x, y);
 			if (pixel_val == 0) {
-				occl_filled_image.pixels.push_back(near_nonzero);
+				unsigned char default = image.pixels[first_nonzero_index];
+				for (unsigned i = row_start_index; i <= row_end_index; ++i) {
+					if (image.pixels[i] != 0) {
+						default = image.pixels[i];
+					}
+					occl_filled_image.pixels.push_back(default);
+				}
 			}
 			else {
-				near_nonzero = pixel_val;
 				occl_filled_image.pixels.push_back(pixel_val);
 			}
 		}
 	}
 	return occl_filled_image;
-	/*
-	voi tehä paremmankin algoritmin, tämä ei esim. ota huomioon sitä et onko rivin ihan eka pikseli, jollon sitä ei kannata ottaa edellisestä pikselistä
-			if (x > 0) {
-				occl_filled_image[x] = occl_filled_image[x-1];
-			}
-			if (x = 0) {
-				int i = 0;
-				while (true) {
-					i++;
-					if (occl_filled_image[i] != 0) {
-						occl_filled_image[x] = occl_filled_image[i];
-						break;
-					}
-				}
-			}
-	*/
 }
 
 GreyscaleImage normalise_disparity_map(GreyscaleImage &disp_map, int max_disp) {
@@ -382,13 +382,13 @@ int main(int argc, const char *argv[]) {
 
 	// Post-process images
 	std::cout << "Postprocessing..." << std::endl;
-	GreyscaleImage x_checked = cross_check(L_disparity_map, R_disparity_map, 8);
+	GreyscaleImage x_checked = cross_check(L_disparity_map, R_disparity_map, 10);
 	std::cout << "cross check done... ";
-	GreyscaleImage occ_filled = occlusion_filling(x_checked);
+	//GreyscaleImage occ_filled = occlusion_filling(x_checked);
 	std::cout << "occlusion filling done" << std::endl;
 
 	std::cout << "Normalizing pixel values..." << std::endl;
-	GreyscaleImage normalized = normalise_disparity_map(occ_filled, max_disp);
+	GreyscaleImage normalized = normalise_disparity_map(x_checked, max_disp);
 	
 	//vector<unsigned char> R2L_disparity_map_normalised = normalise_disparity_map(R2L_disparity_map_values, max_disp);
 	/*
