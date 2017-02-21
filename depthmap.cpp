@@ -6,46 +6,20 @@
 #include "lodepng.h"
 
 /*
-	This file implements the Zero-mean Normalized Cross Correlation algorithm in C.
-	Phase 1 of the course work for the Multiprocessor Programming -course.
+	Phase 1 (C/C++ implementation) for the Multiprocessor Programming -course.
 	Authors:
 		Heikki Kaarlela, student nr. 2316624
 		Eero Paavola, student nr. 2195447
 
 	link to doc: http://tinyurl.com/htyoa8u
-	
-	STEPS:
-
-	1. read input images to memory
-		a. input imgs are 32-bit RGBA .png images
-
-	2. resize images to 1/16 of the original size (From 2940x2016 to 735x504)
-		NOTE! this also means that ndisp has to be scaled (260 / 4 = 65 I think...?)
-		a. naive method: take every 4th pixel, discard rest
-		b. better: calculate mean of 4x4 blocks -> value of new pixel
-		
-
-	3. make images greyscale (8-bits/pixel)
-		a. see if doing this manually is the same as using
-		lodepng_decode_file(img, width, height,	fname, LodePNGColorType colortype, unsigned bitdepth),
-		where colortype = 0, bitdepth = 8
-
-	4. compute disparity images (2)
-		a. first using img2 as "filter" to img1 and then vice versa
-
-	5. apply postprocessing, producing one output img
-		a. first crosscheck
-		b. then occlusion filling
-
-	6. check that the output file looks ok
-		a. output img should be 8-bit greyscale image named 'depthmap.png'
-		b. fiddle with block value in step 5 (15, 25...) and see what looks best
-
-	7. benchmark the program using QueryPerformanceCounter() and VS profiler (compare)
 
 */
 
-// TODO: replace in-code blockradius with BLOCK_RADIUS
+/* 
+	TODO: 
+	- replace in-code blockradius with BLOCK_RADIUS
+	- benchmark the program using QueryPerformanceCounter() and VS profiler (compare)
+*/
 
 #define BLOCK_SIZE 9 // Has to be uneven i.e. 9, 15, 25
 #define BLOCK_RADIUS (BLOCK_SIZE - 1) / 2
@@ -226,7 +200,6 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 }
 
 GreyscaleImage cross_check(GreyscaleImage &left_image, GreyscaleImage &right_image, int threshold) {
-	//Käy läpi kaksi listaa, vertailee keskenään, jos yli thresholdin niin vaihtaa tilalle nollan
 	/*
 	instead of 
 	abs(Left[index] - Right[index])
@@ -263,28 +236,24 @@ unsigned char get_nearest_nonzero_pixel(GreyscaleImage &image, unsigned target_x
 		// right side
 		int x = radius;
 		for (int y = radius; y > -radius; y--) {
-			// handle right pixels
 			sentinel = image.get_pixel((target_x + x), (target_y + y));
 			if (sentinel) return sentinel;
 		}
 		// bottom
 		int y = -radius;
 		for (int x = radius; x > -radius; x--) {
-			// handle bottom pixels
 			sentinel = image.get_pixel((target_x + x), (target_y + y));
 			if (sentinel) return sentinel;
 		}
 		// left side
 		x = -radius;
 		for (int y = -radius; y < radius; y++) {
-			// handle left pixels
 			sentinel = image.get_pixel((target_x + x), (target_y + y));
 			if (sentinel) return sentinel;
 		}
 		// top
 		y = radius;
 		for (int x = -radius; x < radius; x++) {
-			// handle top pixels
 			sentinel = image.get_pixel((target_x + x), (target_y + y));
 			if (sentinel) return sentinel;
 		}
@@ -443,5 +412,4 @@ int main(int argc, const char *argv[]) {
 	std::cout << "All done!" << std::endl;
 	int a = 0;
 	return 0;
-	
 }
