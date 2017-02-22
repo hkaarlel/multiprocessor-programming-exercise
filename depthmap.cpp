@@ -7,21 +7,20 @@
 
 /*
 	Phase 1 (C/C++ implementation) for the Multiprocessor Programming -course.
+
 	Authors:
 		Heikki Kaarlela, student nr. 2316624
 		Eero Paavola, student nr. 2195447
-
-	link to doc: http://tinyurl.com/htyoa8u
-
 */
 
 /* 
 	TODO: 
 	- replace in-code blockradius with BLOCK_RADIUS
-	- benchmark the program using QueryPerformanceCounter() and VS profiler (compare)
+	- preprocessor macros for encoding images of intermediate steps
+	- benchmark the using QueryPerformanceCounter()
 */
 
-#define BLOCK_SIZE 9 // Has to be uneven i.e. 9, 15, 25
+#define BLOCK_SIZE 15 // Has to be uneven i.e. 9, 15, 25
 #define BLOCK_RADIUS (BLOCK_SIZE - 1) / 2
 
 #define BYTES_PER_PIXEL 4 // 3 = RGB (24-bit), 4 = RGBA (32-bit)
@@ -90,7 +89,7 @@ void convert_to_greyscale(vector<unsigned char> &input_img, GreyscaleImage &outp
 		unsigned char r = input_img[byte];
 		unsigned char g = input_img[byte + 1];
 		unsigned char b = input_img[byte + 2];
-
+		// rounds down
 		unsigned char greyscale_value = 0.2126f * r + 0.7152f * g + 0.0722f * b;
 		output_img.pixels.push_back(greyscale_value);
 	}
@@ -139,6 +138,12 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 										GreyscaleImage &ref_img, unordered_map<unsigned, float> &ref_img_window_avgs, 
 										int min_disp, int max_disp, int block_radius)
 {
+	float zncc_numerator_sum;
+	float zncc_denominator_sum_L;
+	float zncc_denominator_sum_R;
+	float zncc;
+	float best_zncc;
+	unsigned char best_disparity_value;
 	unsigned pixel_index;
 	unsigned ref_img_pixel_index;
 	vector<unsigned char> disparity_map;
@@ -158,33 +163,37 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 			float src_window_mean = src_img_window_avgs[pixel_index];
 			// Get pixel values of window (length = blocksize**2 = 81)
 			vector<unsigned char> src_window_pixels = get_window_around_point(src_img, x, y, block_radius);
-
-			float zncc_numerator_sum = 0;
-			float zncc_denominator_sum_L = 0;
-			float zncc_denominator_sum_R = 0;
-			float zncc = 0;
-			float best_zncc = 0;
-			unsigned char best_disparity_value = 0;
+			
+			zncc = 0;
+			best_zncc = 0;
+			best_disparity_value = 0;
 			// For each disparity value...
 			for (int disparity = min_disp; disparity <= max_disp; disparity++) {
+
 				int offset = x - disparity; // offset = value of x in reference image
+
 				if (offset - block_radius < 0 || offset + block_radius >= (int)src_img.width) {
 					break; // Make sure that disparity values dont move the window outside of image.
 				}
+
+				zncc_numerator_sum = 0;
+				zncc_denominator_sum_L = 0;
+				zncc_denominator_sum_R = 0;
 				ref_img_pixel_index = y*ref_img.width + offset;
 				float ref_window_mean = ref_img_window_avgs[ref_img_pixel_index];
 				vector<unsigned char> ref_window_pixels = get_window_around_point(ref_img, offset, y, block_radius);
+
 				// For pixel in window...
 				for (unsigned i = 0; i < src_window_pixels.size(); i++) {
 					
 					float src_window_diff = src_window_pixels[i] - src_window_mean;
-
 					float ref_window_diff = ref_window_pixels[i] - ref_window_mean;
 
-					zncc_numerator_sum += src_window_diff * ref_window_diff;
+					zncc_numerator_sum += (src_window_diff * ref_window_diff);
 					zncc_denominator_sum_L += pow(src_window_diff, 2);
 					zncc_denominator_sum_R += pow(ref_window_diff, 2);
 				}
+
 				// Calculate ZNCC, store highest disparity value
 				zncc = zncc_numerator_sum / (sqrt(zncc_denominator_sum_L) * sqrt(zncc_denominator_sum_R));
 				if (zncc > best_zncc) {
@@ -384,7 +393,7 @@ int main(int argc, const char *argv[]) {
 
 	// Post-process images
 	std::cout << "Postprocessing..." << std::endl;
-	GreyscaleImage x_checked = cross_check(L_disparity_map, R_disparity_map, 20);
+	GreyscaleImage x_checked = cross_check(L_disparity_map, R_disparity_map, 10);
 	std::cout << "cross check done... ";
 	GreyscaleImage occ_filled = occlusion_filling(x_checked);
 	std::cout << "occlusion filling done" << std::endl;
@@ -392,7 +401,6 @@ int main(int argc, const char *argv[]) {
 	std::cout << "Normalizing pixel values..." << std::endl;
 	GreyscaleImage normalized = normalise_disparity_map(occ_filled, max_disp);
 	
-	//vector<unsigned char> R2L_disparity_map_normalised = normalise_disparity_map(R2L_disparity_map_values, max_disp);
 	/*
 	// FOR DEBUGGING
 	// Encode the resized images
@@ -401,15 +409,11 @@ int main(int argc, const char *argv[]) {
 	encode_to_32_file(resized_filename_1, left_img_scaled, scaled_width, scaled_height);
 	encode_to_32_file(resized_filename_2, right_img_scaled, scaled_width, scaled_height);
 	*/
-	// FOR DEBUGGING
-	// Encode the greyscale images
+	
 	std::cout << "Writing output images to disk..." << std::endl;
-	const char *greyscale_file_1 = "greyscale1.png";
-	encode_to_greyscale_file(greyscale_file_1, normalized.pixels, scaled_width, scaled_height);
+	const char *output_filename = "depthmap.png";
+	encode_to_greyscale_file(output_filename, normalized.pixels, scaled_width, scaled_height);
 
-	//const char *greyscale_file_2 = "greyscale2.png";
-	//encode_to_greyscale_file(greyscale_file_2, R_disparity_map.pixels, scaled_width, scaled_height);
 	std::cout << "All done!" << std::endl;
-	int a = 0;
 	return 0;
 }
