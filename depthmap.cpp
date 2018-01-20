@@ -49,6 +49,13 @@ struct GreyscaleImage {
 	}
 };
 
+struct My8BitRGBImage
+{
+	unsigned int ncols;
+	unsigned int nrows;
+	vector<unsigned char> data;
+};
+
 void decodeFile(const char* filename, vector<uint8_t> &image, unsigned &width, unsigned &height) {
 
 	//decode
@@ -365,6 +372,11 @@ int main(int argc, const char *argv[]) {
 	std::cout << "Image 1 done... ";
 	convert_to_greyscale(right_img_scaled, Right_img);
 	std::cout << "Image 2 done" << std::endl;
+
+	My8BitRGBImage Im1;
+	Im1.ncols = scaled_width;
+	Im1.nrows = scaled_height;
+	Im1.data = Left_img.pixels;
 
 	// Check that greyscale images still have the correct dimensions
 	if (Left_img.pixels.size() != scaled_width*scaled_height 
