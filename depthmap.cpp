@@ -6,7 +6,9 @@
 #include "lodepng.h"
 
 /*
-	Phase 1 (C/C++ implementation) for the Multiprocessor Programming -course.
+	Phase 2 (C/C++ implementation) for the Multiprocessor Programming -course.
+	OpenMP used for multiprocessing
+
 
 	Authors:
 		Heikki Kaarlela, student nr. 2316624
