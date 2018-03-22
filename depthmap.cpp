@@ -207,6 +207,7 @@ vector<unsigned char> calc_disparity_map(GreyscaleImage &src_img, unordered_map<
 				}
 			}
 			//std::cout << "Disparity for (" << x << "," << y << ") is " << (int)best_disparity_value << std::endl;
+#pragma omp ordered
 			disparity_map.push_back(best_disparity_value);
 		}
 	}
@@ -319,20 +320,6 @@ GreyscaleImage normalise_disparity_map(GreyscaleImage &disp_map, int max_disp) {
 
 int main(int argc, const char *argv[]) {
 	
-
-	omp_set_dynamic(4);
-	omp_set_num_threads(4);
-	int num = omp_get_max_threads();
-	printf("%d", num);
-#pragma omp parallel
-	{
-		int ID = omp_get_thread_num();
-		printf("number of threads %d %d\n", omp_get_num_threads(), num);
-		printf("hello %d \n", ID);
-	}
-
-
-
 	const char* filename_1 = argc > 1 ? argv[1] : "im0.png";
 	const char* filename_2 = argc > 2 ? argv[2] : "im1.png";
 
@@ -398,27 +385,94 @@ int main(int argc, const char *argv[]) {
 	// Create unordered_map (pixelIndex, windowMean) of window means for both images
 	int block_radius = (BLOCK_SIZE - 1) / 2;
 	std::cout << "Mapping window averages..." << std::endl;
-	unordered_map<unsigned, float> left_img_window_avgs = calc_window_averages(Left_img, block_radius);
-	std::cout << "Image 1 done... ";
-	unordered_map<unsigned, float> right_img_window_avgs = calc_window_averages(Right_img, block_radius);
-	std::cout << "Image 2 done" << std::endl;
+	unordered_map<unsigned, float> left_img_window_avgs;
+	unordered_map<unsigned, float> right_img_window_avgs;
+#pragma omp parallel for
+	for (int i = 0; i < 2; i++) {
+		if (i == 0)
+			left_img_window_avgs = calc_window_averages(Left_img, block_radius);
+		else
+			right_img_window_avgs = calc_window_averages(Right_img, block_radius);
+		std::cout << "Image " << i << " done... " << std::endl;
+	}
+
 
 	// Calculate disparity maps using ZNCC
 	int max_disp = MAX_DISP / 4;
 	std::cout << "Calculating disparity maps..." << std::endl;
-	vector<unsigned char> L2R_disparity_map_values;
-	vector<unsigned char> R2L_disparity_map_values;
-#pragma omp parallel for
-	for (int i = 0; i < 2; i++) {
-		if (i == 0)
-			L2R_disparity_map_values = calc_disparity_map(Left_img, left_img_window_avgs, Right_img, right_img_window_avgs, 0, max_disp, block_radius);
-		else
-			R2L_disparity_map_values = calc_disparity_map(Right_img, right_img_window_avgs, Left_img, left_img_window_avgs, -max_disp, 0, block_radius);
-		std::cout << "Image " << i << " done... ";
+
+
+
+
+
+
+
+
+
+	// fill 
+	GreyscaleImage Left_img_top;
+	Left_img_top.height = Left_img.height / 2;
+	Left_img_top.width = Left_img.width;
+
+	GreyscaleImage Left_img_bottom;
+	Left_img_bottom.height = Left_img.height / 2;
+	Left_img_bottom.width = Left_img.width;
+
+	GreyscaleImage Right_img_top;
+	Right_img_top.height = Right_img.height / 2;
+	Right_img_top.width = Right_img.width;
+
+	GreyscaleImage Right_img_bottom;
+	Right_img_bottom.height = Right_img.height / 2;
+	Right_img_bottom.width = Right_img.width;
+
+	unsigned char pixel;
+
+	for (unsigned y = 0; y < (Left_img.height / 2); y++) {
+		for (unsigned x = 0; x < Left_img.width; x++) {
+			pixel = Left_img.get_pixel(x, y);
+			Left_img_top.pixels.push_back(pixel);
+			pixel = Left_img.get_pixel(x, y + (Left_img.height / 2));
+			Left_img_bottom.pixels.push_back(pixel);
+
+			pixel = Right_img.get_pixel(x, y);
+			Right_img_top.pixels.push_back(pixel);
+			pixel = Right_img.get_pixel(x, y + (Right_img.height / 2));
+			Right_img_bottom.pixels.push_back(pixel);
+
+		}
 	}
+
+
+
+
+
+
+	vector<unsigned char> L2R_disparity_map_values;
+	vector<unsigned char> L2R_disparity_map_values_bottom;	//lower half of the image
+	vector<unsigned char> R2L_disparity_map_values;
+	vector<unsigned char> R2L_disparity_map_values_bottom;
+
+#pragma omp parallel for
+	for (int i = 0; i < 4; i++) {
+		if (i == 0)
+			L2R_disparity_map_values = calc_disparity_map(Left_img_top, left_img_window_avgs, Right_img_top, right_img_window_avgs, 0, max_disp, block_radius);
+		else if (i == 1)
+			L2R_disparity_map_values_bottom = calc_disparity_map(Left_img_top, left_img_window_avgs, Right_img_top, right_img_window_avgs, 0, max_disp, block_radius);
+		else if (i == 2)
+			R2L_disparity_map_values = calc_disparity_map(Right_img_top, right_img_window_avgs, Left_img_top, left_img_window_avgs, -max_disp, 0, block_radius);
+		else
+			R2L_disparity_map_values_bottom = calc_disparity_map(Right_img_top, right_img_window_avgs, Left_img_top, left_img_window_avgs, -max_disp, 0, block_radius);
+		std::cout << "Image block" << i << " done... " << std::endl;
+	}
+	//concanating the halfs of the images
+	L2R_disparity_map_values.insert(L2R_disparity_map_values.end(), L2R_disparity_map_values_bottom.begin(), L2R_disparity_map_values_bottom.end());
+	R2L_disparity_map_values.insert(R2L_disparity_map_values.end(), R2L_disparity_map_values_bottom.begin(), R2L_disparity_map_values_bottom.end());
 
 	GreyscaleImage L_disparity_map = { scaled_width, scaled_height, L2R_disparity_map_values };
 	GreyscaleImage R_disparity_map = { scaled_width, scaled_height, R2L_disparity_map_values };
+
+
 
 	// Post-process images
 	std::cout << "Postprocessing..." << std::endl;
