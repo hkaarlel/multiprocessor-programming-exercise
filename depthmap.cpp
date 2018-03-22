@@ -373,7 +373,7 @@ int main(int argc, const char *argv[]) {
 			convert_to_greyscale(left_img_scaled, Left_img);
 		else
 			convert_to_greyscale(right_img_scaled, Right_img);
-		std::cout << "Image " << i << " done" << std::endl;
+		std::cout << "Image " << i+1 << " done" << std::endl;
 	}
 
 	// Check that greyscale images still have the correct dimensions
@@ -382,34 +382,11 @@ int main(int argc, const char *argv[]) {
 		std::cout << "Greyscale image has wrong dimensions! Aborting..." << std::endl;
 	}
 
-	// Create unordered_map (pixelIndex, windowMean) of window means for both images
-	int block_radius = (BLOCK_SIZE - 1) / 2;
-	std::cout << "Mapping window averages..." << std::endl;
-	unordered_map<unsigned, float> left_img_window_avgs;
-	unordered_map<unsigned, float> right_img_window_avgs;
-#pragma omp parallel for
-	for (int i = 0; i < 2; i++) {
-		if (i == 0)
-			left_img_window_avgs = calc_window_averages(Left_img, block_radius);
-		else
-			right_img_window_avgs = calc_window_averages(Right_img, block_radius);
-		std::cout << "Image " << i << " done... " << std::endl;
-	}
-
-
-	// Calculate disparity maps using ZNCC
-	int max_disp = MAX_DISP / 4;
-	std::cout << "Calculating disparity maps..." << std::endl;
+	
 
 
 
-
-
-
-
-
-
-	// fill 
+	// dividing the images into two to utilize more threads
 	GreyscaleImage Left_img_top;
 	Left_img_top.height = Left_img.height / 2;
 	Left_img_top.width = Left_img.width;
@@ -445,7 +422,31 @@ int main(int argc, const char *argv[]) {
 
 
 
+	// Create unordered_map (pixelIndex, windowMean) of window means for both images
+	int block_radius = (BLOCK_SIZE - 1) / 2;
+	std::cout << "Mapping window averages..." << std::endl;
+	unordered_map<unsigned, float> left_img_window_avgs_top;
+	unordered_map<unsigned, float> left_img_window_avgs_bottom;
+	unordered_map<unsigned, float> right_img_window_avgs_top;
+	unordered_map<unsigned, float> right_img_window_avgs_bottom;
 
+#pragma omp parallel for
+	for (int i = 0; i < 3; i++) {
+		if (i == 0)
+			left_img_window_avgs_top = calc_window_averages(Left_img_top, block_radius);
+		if (i == 1)
+			left_img_window_avgs_bottom = calc_window_averages(Left_img_bottom, block_radius);
+		if (i == 2)
+			right_img_window_avgs_top = calc_window_averages(Right_img_top, block_radius);
+		else
+			right_img_window_avgs_bottom = calc_window_averages(Right_img_bottom, block_radius);
+		std::cout << "Image block" << i+1 << " done... " << std::endl;
+	}
+
+
+	// Calculate disparity maps using ZNCC
+	int max_disp = MAX_DISP / 4;
+	std::cout << "Calculating disparity maps..." << std::endl;
 
 
 	vector<unsigned char> L2R_disparity_map_values;
@@ -456,14 +457,14 @@ int main(int argc, const char *argv[]) {
 #pragma omp parallel for
 	for (int i = 0; i < 4; i++) {
 		if (i == 0)
-			L2R_disparity_map_values = calc_disparity_map(Left_img_top, left_img_window_avgs, Right_img_top, right_img_window_avgs, 0, max_disp, block_radius);
+			L2R_disparity_map_values = calc_disparity_map(Left_img_top, left_img_window_avgs_top, Right_img_top, right_img_window_avgs_top, 0, max_disp, block_radius);
 		else if (i == 1)
-			L2R_disparity_map_values_bottom = calc_disparity_map(Left_img_top, left_img_window_avgs, Right_img_top, right_img_window_avgs, 0, max_disp, block_radius);
+			L2R_disparity_map_values_bottom = calc_disparity_map(Left_img_bottom, left_img_window_avgs_bottom, Right_img_top, right_img_window_avgs_bottom, 0, max_disp, block_radius);
 		else if (i == 2)
-			R2L_disparity_map_values = calc_disparity_map(Right_img_top, right_img_window_avgs, Left_img_top, left_img_window_avgs, -max_disp, 0, block_radius);
+			R2L_disparity_map_values = calc_disparity_map(Right_img_top, right_img_window_avgs_top, Left_img_top, left_img_window_avgs_top, -max_disp, 0, block_radius);
 		else
-			R2L_disparity_map_values_bottom = calc_disparity_map(Right_img_top, right_img_window_avgs, Left_img_top, left_img_window_avgs, -max_disp, 0, block_radius);
-		std::cout << "Image block" << i << " done... " << std::endl;
+			R2L_disparity_map_values_bottom = calc_disparity_map(Right_img_bottom, right_img_window_avgs_bottom, Left_img_top, left_img_window_avgs_bottom, -max_disp, 0, block_radius);
+		std::cout << "Image block" << i+1 << " done... " << std::endl;
 	}
 	//concanating the halfs of the images
 	L2R_disparity_map_values.insert(L2R_disparity_map_values.end(), L2R_disparity_map_values_bottom.begin(), L2R_disparity_map_values_bottom.end());
