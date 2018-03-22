@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "lodepng.h"
+#include <omp.h>
 
 /*
 	Phase 2 (C/C++ implementation) for the Multiprocessor Programming -course.
@@ -34,6 +35,8 @@
 #define REDUCED_IMG_HEIGHT 504
 
 #define MAX_DISP 260
+
+#define OMP_NUM_THREADS 4
 
 using std::vector;
 using std::unordered_map;
@@ -316,6 +319,20 @@ GreyscaleImage normalise_disparity_map(GreyscaleImage &disp_map, int max_disp) {
 
 int main(int argc, const char *argv[]) {
 	
+
+	omp_set_dynamic(4);
+	omp_set_num_threads(4);
+	int num = omp_get_max_threads();
+	printf("%d", num);
+#pragma omp parallel
+	{
+		int ID = omp_get_thread_num();
+		printf("number of threads %d %d\n", omp_get_num_threads(), num);
+		printf("hello %d \n", ID);
+	}
+
+
+
 	const char* filename_1 = argc > 1 ? argv[1] : "im0.png";
 	const char* filename_2 = argc > 2 ? argv[2] : "im1.png";
 
@@ -363,10 +380,14 @@ int main(int argc, const char *argv[]) {
 
 	// Create greyscale images from resized images
 	std::cout << "Creating greyscale images..." << std::endl;
-	convert_to_greyscale(left_img_scaled, Left_img);
-	std::cout << "Image 1 done... ";
-	convert_to_greyscale(right_img_scaled, Right_img);
-	std::cout << "Image 2 done" << std::endl;
+#pragma omp parallel for
+	for (int i = 0; i < 2; i++) {
+		if (i == 0)
+			convert_to_greyscale(left_img_scaled, Left_img);
+		else
+			convert_to_greyscale(right_img_scaled, Right_img);
+		std::cout << "Image " << i << " done" << std::endl;
+	}
 
 	// Check that greyscale images still have the correct dimensions
 	if (Left_img.pixels.size() != scaled_width*scaled_height 
@@ -385,10 +406,16 @@ int main(int argc, const char *argv[]) {
 	// Calculate disparity maps using ZNCC
 	int max_disp = MAX_DISP / 4;
 	std::cout << "Calculating disparity maps..." << std::endl;
-	vector<unsigned char> L2R_disparity_map_values = calc_disparity_map(Left_img, left_img_window_avgs, Right_img, right_img_window_avgs, 0, max_disp, block_radius);
-	std::cout << "Image 1 done... ";
-	vector<unsigned char> R2L_disparity_map_values = calc_disparity_map(Right_img, right_img_window_avgs, Left_img, left_img_window_avgs, -max_disp, 0, block_radius);
-	std::cout << "Image 2 done" << std::endl;
+	vector<unsigned char> L2R_disparity_map_values;
+	vector<unsigned char> R2L_disparity_map_values;
+#pragma omp parallel for
+	for (int i = 0; i < 2; i++) {
+		if (i == 0)
+			L2R_disparity_map_values = calc_disparity_map(Left_img, left_img_window_avgs, Right_img, right_img_window_avgs, 0, max_disp, block_radius);
+		else
+			R2L_disparity_map_values = calc_disparity_map(Right_img, right_img_window_avgs, Left_img, left_img_window_avgs, -max_disp, 0, block_radius);
+		std::cout << "Image " << i << " done... ";
+	}
 
 	GreyscaleImage L_disparity_map = { scaled_width, scaled_height, L2R_disparity_map_values };
 	GreyscaleImage R_disparity_map = { scaled_width, scaled_height, R2L_disparity_map_values };
